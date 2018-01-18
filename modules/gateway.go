@@ -162,6 +162,9 @@ type (
 		// Connect establishes a persistent connection to a peer.
 		Connect(NetAddress) error
 
+		// ConnectManual is a Connect wrapper for a user-initiated Connect
+		ConnectManual(NetAddress) error
+
 		// Disconnect terminates a connection to a peer.
 		Disconnect(NetAddress) error
 
@@ -170,6 +173,9 @@ type (
 		// might take multiple minutes to return. A channel to cancel the
 		// discovery can be supplied optionally.
 		DiscoverAddress(cancel <-chan struct{}) (NetAddress, error)
+
+		// DisconnectManual is a Disconnect wrapper for a user-initiated disconnect
+		DisconnectManual(NetAddress) error
 
 		// Address returns the Gateway's address.
 		Address() NetAddress
