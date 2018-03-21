@@ -390,6 +390,41 @@ func (w *Wallet) InitFromSeed(masterKey crypto.TwofishKey, seed modules.Seed) er
 	return err
 }
 
+// InitWatchOnly initializes a watch-only wallet. Watch-only wallets can
+// monitor the blockchain for transactions involving a specific set of
+// addresses, but cannot make new transactions. Watch-only wallets cannot be
+// locked or unlocked, and calling InitWatchOnly immediately subscribes the
+// wallet to the consensus set.
+func (w *Wallet) InitWatchOnly(addrs []types.UnlockHash) error {
+	if err := w.tg.Add(); err != nil {
+		return err
+	}
+	defer w.tg.Done()
+
+	w.mu.Lock()
+	_, err := w.initEncryption(crypto.TwofishKey{}, modules.Seed{}, 0)
+	w.mu.Unlock()
+	if err != nil {
+		return err
+	}
+	for _, addr := range addrs {
+		w.keys[addr] = spendableKey{}
+	}
+
+	done := make(chan struct{})
+	go w.rescanMessage(done)
+	defer close(done)
+	err = w.cs.ConsensusSetSubscribe(w, modules.ConsensusChangeBeginning, w.tg.StopChan())
+	if err != nil {
+		return err
+	}
+	w.mu.Lock()
+	w.subscribed = true
+	w.mu.Unlock()
+
+	return nil
+}
+
 // Unlocked indicates whether the wallet is locked or unlocked.
 func (w *Wallet) Unlocked() bool {
 	w.mu.RLock()

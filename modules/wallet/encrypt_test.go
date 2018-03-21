@@ -249,6 +249,50 @@ func TestLock(t *testing.T) {
 	}
 }
 
+// TestWatchOnly checks that a watch-only wallet can track the balance of a
+// set of addresses.
+func TestWatchOnly(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	wt, err := createWalletTester(t.Name(), modules.ProdDependencies)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer wt.closeWt()
+
+	// generate 100 addresses
+	wt.wallet.NextAddresses(100)
+
+	// Add some blocks and record balance
+	for i := 0; i < 5; i++ {
+		wt.miner.AddBlock()
+	}
+	siacoinBalance, _, _ := wt.wallet.ConfirmedBalance()
+
+	// Create a watch-only wallet using the first wallet's addresses
+	wow, err := New(wt.cs, wt.tpool, build.TempDir(modules.WalletDir, t.Name()+"-watchonly"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = wow.InitWatchOnly(wt.wallet.AllAddresses())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// watch-only wallet should see the same balance
+	wowBalance, _, _ := wow.ConfirmedBalance()
+	if !wowBalance.Equals(siacoinBalance) {
+		t.Error("balances should match")
+	}
+
+	// watch-only wallet should not be able to spend coins
+	_, err = wow.SendSiacoins(types.SiacoinPrecision.Mul64(100), types.UnlockHash{})
+	if err == nil {
+		t.Error("watch-only wallet should not be able to spend coins")
+	}
+}
+
 // TestInitFromSeedConcurrentUnlock verifies that calling InitFromSeed and
 // then Unlock() concurrently results in the correct balance.
 func TestInitFromSeedConcurrentUnlock(t *testing.T) {
