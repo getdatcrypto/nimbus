@@ -24,7 +24,7 @@ var (
 	minCollateral = types.SiacoinPrecision.Div64(5).Div64(tbMonth)
 
 	// Set a minimum price, below which setting lower prices will no longer put
-	// this host at an advatnage. This price is considered the bar for
+	// this host at an advantage. This price is considered the bar for
 	// 'essentially free', and is kept to a minimum to prevent certain Sybil
 	// attack related attack vectors.
 	//
@@ -106,7 +106,7 @@ func (hdb *HostDB) collateralAdjustments(entry modules.HostDBEntry) float64 {
 }
 
 // interactionAdjustments determine the penalty to be applied to a host for the
-// historic and currnet interactions with that host. This function focuses on
+// historic and current interactions with that host. This function focuses on
 // historic interactions and ignores recent interactions.
 func (hdb *HostDB) interactionAdjustments(entry modules.HostDBEntry) float64 {
 	// Give the host a baseline of 30 successful interactions and 1 failed
@@ -153,7 +153,7 @@ func (hdb *HostDB) priceAdjustments(entry modules.HostDBEntry) float64 {
 	//    - uploads happen once per 12 weeks (average lifetime of a file is 12 weeks)
 	//    - downloads happen once per 12 weeks (files are on average downloaded once throughout lifetime)
 	//
-	// In the future, the renter should be able to track average user behavior
+	// TODO: In the future, the renter should be able to track average user behavior
 	// and adjust accordingly. This flexibility will be added later.
 	adjustedContractPrice := entry.ContractPrice.Div64(6048).Div64(25e9)        // Adjust contract price to match 25GB for 6 weeks.
 	adjustedUploadPrice := entry.UploadBandwidthPrice.Div64(24192)              // Adjust upload price to match a single upload over 24 weeks.

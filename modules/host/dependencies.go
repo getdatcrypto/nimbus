@@ -13,7 +13,7 @@ var (
 	mockErrNewLogger    = errors.New("simulated NewLogger failure")
 	mockErrOpenDatabase = errors.New("simulated OpenDatabase failure")
 	mockErrReadFile     = errors.New("simulated ReadFile failure")
-	mockErrRemoveFile   = errors.New("simulated RemoveFile faulure")
+	mockErrRemoveFile   = errors.New("simulated RemoveFile failure")
 	mockErrSymlink      = errors.New("simulated Symlink failure")
 	mockErrWriteFile    = errors.New("simulated WriteFile failure")
 )

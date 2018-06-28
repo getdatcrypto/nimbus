@@ -252,7 +252,7 @@ func newHost(dependencies modules.Dependencies, cs modules.ConsensusSet, g modul
 		}
 	}()
 
-	// Create the perist directory if it does not yet exist.
+	// Create the persist directory if it does not yet exist.
 	err = dependencies.MkdirAll(h.persistDir, 0700)
 	if err != nil {
 		return nil, err
@@ -301,7 +301,7 @@ func newHost(dependencies modules.Dependencies, cs modules.ConsensusSet, g modul
 	})
 
 	// Initialize the networking. We need to hold the lock while doing so since
-	// the previous load subscribed the host to the consenus set.
+	// the previous load subscribed the host to the consensus set.
 	h.mu.Lock()
 	err = h.initNetworking(listenerAddress)
 	h.mu.Unlock()
