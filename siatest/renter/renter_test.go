@@ -1383,6 +1383,160 @@ func TestRenterContractEndHeight(t *testing.T) {
 	}
 }
 
+// TestRenterContractFunds
+func TestRenterContractFunds(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create a group without a renter for testing.
+	groupParams := siatest.GroupParams{
+		Hosts:  2,
+		Miners: 1,
+	}
+	tg, err := siatest.NewGroupFromTemplate(groupParams)
+	if err != nil {
+		t.Fatal("Failed to create group: ", err)
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// Add a renter with a custom allowance, low funds and short renew window to
+	// ensure there is plenty of time to spend and renew contracts within the
+	// same period
+	renterDir, err := siatest.TestDir(filepath.Join(t.Name(), "renter"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	renterParams := node.Renter(renterDir)
+	renterParams.Allowance.Funds = types.SiacoinPrecision.Mul64(100) // starting with 100SC, need to determine appropriate value
+	renterParams.Allowance.Hosts = uint64(len(tg.Hosts()))
+	renterParams.Allowance.Period = 100
+	renterParams.Allowance.RenewWindow = 10
+	nodes, err := tg.AddNodes(renterParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := nodes[0]
+
+	// Confirm contracts were created as expected
+	err = build.Retry(200, 100*time.Millisecond, func() error {
+		rc, err := r.RenterContractsGet()
+		if err != nil {
+			return err
+		}
+		if len(rc.Contracts) != len(tg.Hosts()) {
+			return fmt.Errorf("Did not get the expected number of contracts. Got %v expected %v", len(rc.Contracts), len(tg.Hosts()))
+		}
+		return nil
+	})
+	if err != nil {
+		printDebug(r)
+		t.Fatal(err)
+	}
+
+	// Check contract funds
+	rc, err := r.RenterContractsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var totalFunds types.Currency
+	fmt.Println("Contracts")
+	for _, c := range rc.Contracts {
+		fmt.Println("ID:", c.ID)
+		fmt.Println("RF:", c.RenterFunds.HumanString())
+		fmt.Println("TC:", c.TotalCost.HumanString())
+		totalFunds = totalFunds.Add(c.TotalCost)
+	}
+	fmt.Println("Old Contracts")
+	for _, c := range rc.OldContracts {
+		fmt.Println("ID:", c.ID)
+		fmt.Println("RF:", c.RenterFunds.HumanString())
+		fmt.Println("TC:", c.TotalCost.HumanString())
+		totalFunds = totalFunds.Add(c.TotalCost)
+	}
+	rg, err := r.RenterGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if totalFunds.Cmp(rg.Settings.Allowance.Funds) > 0 {
+		t.Fatalf(`Contract funds exceed allowance funds.
+		Contract Funds:  %v
+		Allowance Funds: %v
+		`, totalFunds.HumanString(), rg.Settings.Allowance.Funds.HumanString())
+	}
+
+	// create loop of
+	// - renew contracts by spending
+	// - check total funds in contracts vs allowance funds
+	//
+	// should get to the point where you can no longer upload
+	// and you can't renew contracts so you should probable have
+	// no active contracts at that point
+	m := tg.Miners()[0]
+	for totalFunds.Cmp(rg.Settings.Allowance.Funds) <= 0 {
+		// _, err := renewContractsBySpending(r, tg)
+		// if err != nil {
+		// 	t.Fatal(err)
+		// }
+		for _, c := range rc.Contracts {
+			c.GoodForRenew = false
+			c.GoodForUpload = false
+		}
+		// TODO Need to call updateUtility on the contracts to set GFR and GFU to false
+		if err := m.MineBlock(); err != nil {
+			t.Fatal(err)
+		}
+		rc, err = r.RenterContractsGet()
+		if err != nil {
+			t.Fatal(err)
+		}
+		fmt.Println("Contracts")
+		for _, c := range rc.Contracts {
+			fmt.Println("ID:", c.ID)
+			fmt.Println("RF:", c.RenterFunds.HumanString())
+			fmt.Println("TC:", c.TotalCost.HumanString())
+			fmt.Println("GFR", c.GoodForRenew)
+			fmt.Println("GFU", c.GoodForUpload)
+			totalFunds = totalFunds.Add(c.TotalCost)
+		}
+		fmt.Println("Old Contracts")
+		for _, c := range rc.OldContracts {
+			fmt.Println("ID:", c.ID)
+			fmt.Println("RF:", c.RenterFunds.HumanString())
+			fmt.Println("TC:", c.TotalCost.HumanString())
+		}
+		fmt.Println("*****LOOP*****")
+	}
+
+	if totalFunds.Cmp(rg.Settings.Allowance.Funds) > 0 {
+		t.Fatalf(`Contract funds exceed allowance funds.
+		Contract Funds:  %v
+		Allowance Funds: %v
+		`, totalFunds.HumanString(), rg.Settings.Allowance.Funds.HumanString())
+	}
+}
+
+func printDebug(r *siatest.TestNode) {
+	// rg, _ := r.RenterGet()
+	rc, _ := r.RenterContractsGet()
+	fmt.Println("Contracts")
+	for _, c := range rc.Contracts {
+		fmt.Println("ID", c.ID)
+		fmt.Println("TC", c.TotalCost.HumanString())
+	}
+	fmt.Println("OldContracts")
+	for _, c := range rc.OldContracts {
+		fmt.Println("ID", c.ID)
+		fmt.Println("TC", c.TotalCost.HumanString())
+	}
+}
+
 // TestRenterContractsEndpoint tests the API endpoint for old contracts
 func TestRenterContractsEndpoint(t *testing.T) {
 	if testing.Short() {
@@ -2404,6 +2558,8 @@ func checkContracts(numHosts, numRenewals int, oldContracts, renewedContracts []
 	}
 
 	for _, c := range renewedContracts {
+		fmt.Println("RF:", c.RenterFunds.HumanString())
+		fmt.Println("TC:", c.TotalCost.HumanString())
 		// Verify that all the contracts marked as GoodForRenew
 		// were renewed
 		if _, ok := initialContractIDMap[c.ID]; ok {
@@ -2642,6 +2798,9 @@ LOOP:
 		// To protect against contracts not renewing during uploads
 		for _, c := range rc.ActiveContracts {
 			percentRemaining, _ := big.NewRat(0, 1).SetFrac(c.RenterFunds.Big(), c.TotalCost.Big()).Float64()
+			fmt.Println(percentRemaining)
+			fmt.Println("RF:", c.RenterFunds.HumanString())
+			fmt.Println("TC:", c.TotalCost.HumanString())
 			if percentRemaining < float64(0.03) {
 				break LOOP
 			}
@@ -2658,7 +2817,10 @@ LOOP:
 			return types.ZeroCurrency, errors.AddContext(err, "could not get renter active contracts")
 		}
 	}
-	if err = m.MineBlock(); err != nil {
+	if err := m.MineBlock(); err != nil {
+		return startingUploadSpend, errors.AddContext(err, "error mining block")
+	}
+	if err := tg.Sync(); err != nil {
 		return startingUploadSpend, err
 	}
 	return startingUploadSpend, nil

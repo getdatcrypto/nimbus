@@ -381,10 +381,11 @@ func (c *Contractor) threadedContractMaintenance() {
 			fundsUsed = fundsUsed.Add(contractLineCost)
 		}
 	}
-
-	// Add any unspent funds from the allowance to the available funds. If the
-	// allowance has been decreased, it's possible that we actually need to
-	// reduce the number of funds available to compensate.
+	fmt.Println("fundsUsed:", fundsUsed.HumanString())
+	fmt.Println("initial fundsAvailable:", fundsAvailable.HumanString())
+	// Add any unspent funds from the allowance to the available funds. If
+	// the allowance has been decreased, it's possible that we actually need
+	// to reduce the number of funds available to compensate.
 	if fundsAvailable.Add(allowance.Funds).Cmp(fundsUsed) > 0 {
 		fundsAvailable = fundsAvailable.Add(allowance.Funds).Sub(fundsUsed)
 	} else {
@@ -400,10 +401,12 @@ func (c *Contractor) threadedContractMaintenance() {
 			fundsAvailable = types.ZeroCurrency
 		}
 	}
+	fmt.Println("secondary fundsAvailable:", fundsAvailable.HumanString())
 
 	// Iterate through the contracts again, figuring out which contracts to
 	// renew and how much extra funds to renew them with.
 	for _, contract := range c.staticContracts.ViewAll() {
+		fmt.Println("loop fundsAvailable:", fundsAvailable.HumanString())
 		utility, ok := c.managedContractUtility(contract.ID)
 		if !ok || !utility.GoodForRenew {
 			continue
