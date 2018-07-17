@@ -13,8 +13,8 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/fastrand"
 
-	"github.com/NebulousLabs/fastrand"
 	"github.com/julienschmidt/httprouter"
 )
 

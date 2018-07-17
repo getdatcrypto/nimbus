@@ -19,6 +19,7 @@ type (
 		path     string
 		size     int
 		checksum crypto.Hash
+		uid      string
 	}
 )
 

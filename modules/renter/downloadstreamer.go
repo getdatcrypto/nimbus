@@ -8,8 +8,8 @@ import (
 	"math"
 	"time"
 
-	"github.com/NebulousLabs/fastrand"
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/fastrand"
 )
 
 type (

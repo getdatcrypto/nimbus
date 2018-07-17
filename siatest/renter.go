@@ -25,7 +25,8 @@ func (tn *TestNode) DownloadToDisk(rf *RemoteFile, async bool) (*LocalFile, erro
 	// Create a random destination for the download
 	fileName := fmt.Sprintf("%dbytes-%s", fi.Filesize, hex.EncodeToString(fastrand.Bytes(4)))
 	dest := filepath.Join(tn.downloadsDir(), fileName)
-	if err := tn.RenterDownloadGet(rf.siaPath, dest, 0, fi.Filesize, async); err != nil {
+	uid, err := tn.RenterDownloadGet(rf.siaPath, dest, 0, fi.Filesize, async)
+	if err != nil {
 		return nil, errors.AddContext(err, "failed to download file")
 	}
 	// Create the TestFile
@@ -33,6 +34,7 @@ func (tn *TestNode) DownloadToDisk(rf *RemoteFile, async bool) (*LocalFile, erro
 		path:     dest,
 		size:     int(fi.Filesize),
 		checksum: rf.checksum,
+		uid:      uid,
 	}
 	// If we download the file asynchronously we are done
 	if async {
@@ -46,16 +48,21 @@ func (tn *TestNode) DownloadToDisk(rf *RemoteFile, async bool) (*LocalFile, erro
 }
 
 // DownloadByStream downloads a file and returns its contents as a slice of bytes.
-func (tn *TestNode) DownloadByStream(rf *RemoteFile) (data []byte, err error) {
+func (tn *TestNode) DownloadByStream(rf *RemoteFile) ([]byte, error) {
 	fi, err := tn.FileInfo(rf)
 	if err != nil {
 		return nil, errors.AddContext(err, "failed to retrieve FileInfo")
 	}
-	data, err = tn.RenterDownloadHTTPResponseGet(rf.siaPath, 0, fi.Filesize)
+	_, body, err := tn.RenterDownloadHTTPResponseGet(rf.siaPath, 0, fi.Filesize)
+	if err != nil {
+		return nil, err
+	}
+	b := <-body
+	data, err := b.Data, b.Err
 	if err == nil && rf.checksum != crypto.HashBytes(data) {
 		err = errors.New("downloaded bytes don't match requested data")
 	}
-	return
+	return data, nil
 }
 
 // Stream uses the streaming endpoint to download a file.
@@ -100,20 +107,9 @@ func (tn *TestNode) StreamPartial(rf *RemoteFile, lf *LocalFile, from, to uint64
 // If the corresponding download info was found, DownloadInfo also performs a
 // few sanity checks on its fields.
 func (tn *TestNode) DownloadInfo(lf *LocalFile, rf *RemoteFile) (*api.DownloadInfo, error) {
-	rdq, err := tn.RenterDownloadsGet()
+	di, err := tn.RenterDownloadByUID(lf.uid)
 	if err != nil {
 		return nil, err
-	}
-	var di *api.DownloadInfo
-	for _, d := range rdq.Downloads {
-		if rf.siaPath == d.SiaPath && lf.path == d.Destination {
-			di = &d
-			break
-		}
-	}
-	if di == nil {
-		// No download info found.
-		return nil, errors.New("download info not found")
 	}
 	// Check if length and filesize were set correctly
 	if di.Length != di.Filesize {
@@ -128,7 +124,7 @@ func (tn *TestNode) DownloadInfo(lf *LocalFile, rf *RemoteFile) (*api.DownloadIn
 	if di.Completed && di.Received != di.Length {
 		err = errors.AddContext(err, "completed == true but received != length")
 	}
-	return di, err
+	return &di, err
 }
 
 // File returns the file queried by the user

@@ -13,18 +13,27 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 )
 
-// A Client makes requests to the siad HTTP API.
-type Client struct {
-	// Address is the API address of the siad server.
-	Address string
+type (
+	// A Client makes requests to the siad HTTP API.
+	Client struct {
+		// Address is the API address of the siad server.
+		Address string
 
-	// Password must match the password of the siad server.
-	Password string
+		// Password must match the password of the siad server.
+		Password string
 
-	// UserAgent must match the User-Agent required by the siad server. If not
-	// set, it defaults to "Sia-Agent".
-	UserAgent string
-}
+		// UserAgent must match the User-Agent required by the siad server. If not
+		// set, it defaults to "Sia-Agent".
+		UserAgent string
+	}
+
+	// ResponseBody is a helper struct that is returned within a channel by
+	// getRawResponse to allow returning the header before the body is streamed.
+	ResponseBody struct {
+		Data []byte
+		Err  error
+	}
+)
 
 // New creates a new Client using the provided address.
 func New(address string) *Client {
@@ -69,34 +78,43 @@ func readAPIError(r io.Reader) error {
 	return apiErr
 }
 
-// getRawResponse requests the specified resource. The response, if provided,
-// will be returned in a byte slice
-func (c *Client) getRawResponse(resource string) ([]byte, error) {
+// getRawResponse requests the specified resource. It will return the header of
+// the response right away and if there is a content, it will return it as a
+// channel.
+func (c *Client) getRawResponse(resource string) (http.Header, <-chan ResponseBody, error) {
 	req, err := c.NewRequest("GET", resource, nil)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return nil, errors.AddContext(err, "request failed")
+		return nil, nil, errors.AddContext(err, "request failed")
 	}
-	defer drainAndClose(res.Body)
 
 	if res.StatusCode == http.StatusNotFound {
-		return nil, errors.New("API call not recognized: " + resource)
+		return nil, nil, errors.New("API call not recognized: " + resource)
 	}
 
 	// If the status code is not 2xx, decode and return the accompanying
 	// api.Error.
 	if res.StatusCode < 200 || res.StatusCode > 299 {
-		return nil, readAPIError(res.Body)
+		return nil, nil, readAPIError(res.Body)
 	}
 
 	if res.StatusCode == http.StatusNoContent {
 		// no reason to read the response
-		return []byte{}, nil
+		return res.Header, nil, nil
 	}
-	return ioutil.ReadAll(res.Body)
+	channel := make(chan ResponseBody)
+	go func() {
+		defer drainAndClose(res.Body)
+		d, err := ioutil.ReadAll(res.Body)
+		channel <- ResponseBody{
+			Data: d,
+			Err:  err,
+		}
+	}()
+	return res.Header, channel, nil
 }
 
 // getRawResponse requests part of the specified resource. The response, if
@@ -135,13 +153,19 @@ func (c *Client) getRawPartialResponse(resource string, from, to uint64) ([]byte
 // decoded into obj. The resource path must begin with /.
 func (c *Client) get(resource string, obj interface{}) error {
 	// Request resource
-	data, err := c.getRawResponse(resource)
+	_, body, err := c.getRawResponse(resource)
 	if err != nil {
 		return err
 	}
 	if obj == nil {
 		// No need to decode response
 		return nil
+	}
+	// Get body of response.
+	b := <-body
+	data, err := b.Data, b.Err
+	if err != nil {
+		return err
 	}
 
 	// Decode response

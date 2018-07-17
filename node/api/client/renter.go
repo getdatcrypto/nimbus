@@ -9,6 +9,7 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/node/api"
+	"gitlab.com/NebulousLabs/errors"
 )
 
 // RenterContractsGet requests the /renter/contracts resource and returns
@@ -43,22 +44,22 @@ func (c *Client) RenterDeletePost(siaPath string) (err error) {
 
 // RenterDownloadGet uses the /renter/download endpoint to download a file to a
 // destination on disk.
-func (c *Client) RenterDownloadGet(siaPath, destination string, offset, length uint64, async bool) (err error) {
+func (c *Client) RenterDownloadGet(siaPath, destination string, offset, length uint64, async bool) (string, error) {
 	siaPath = strings.TrimPrefix(siaPath, "/")
 	query := fmt.Sprintf("%s?destination=%s&offset=%d&length=%d&httpresp=false&async=%v",
 		siaPath, destination, offset, length, async)
-	err = c.get("/renter/download/"+query, nil)
-	return
+	header, _, err := c.getRawResponse("/renter/download/" + query)
+	return header.Get("uid"), err
 }
 
 // RenterDownloadFullGet uses the /renter/download endpoint to download a full
 // file.
-func (c *Client) RenterDownloadFullGet(siaPath, destination string, async bool) (err error) {
+func (c *Client) RenterDownloadFullGet(siaPath, destination string, async bool) (string, error) {
 	siaPath = strings.TrimPrefix(siaPath, "/")
 	query := fmt.Sprintf("%s?destination=%s&httpresp=false&async=%v",
 		siaPath, destination, async)
-	err = c.get("/renter/download/"+query, nil)
-	return
+	header, _, err := c.getRawResponse("/renter/download/" + query)
+	return header.Get("uid"), err
 }
 
 // RenterClearAllDownloadsPost requests the /renter/downloads/clear resource
@@ -111,11 +112,11 @@ func (c *Client) RenterDownloadsGet() (rdq api.RenterDownloadQueue, err error) {
 
 // RenterDownloadHTTPResponseGet uses the /renter/download endpoint to download
 // a file and return its data.
-func (c *Client) RenterDownloadHTTPResponseGet(siaPath string, offset, length uint64) (resp []byte, err error) {
+func (c *Client) RenterDownloadHTTPResponseGet(siaPath string, offset, length uint64) (string, <-chan ResponseBody, error) {
 	siaPath = strings.TrimPrefix(siaPath, "/")
 	query := fmt.Sprintf("%s?offset=%d&length=%d&httpresp=true", siaPath, offset, length)
-	resp, err = c.getRawResponse("/renter/download/" + query)
-	return
+	header, body, err := c.getRawResponse("/renter/download/" + query)
+	return header.Get("uid"), body, err
 }
 
 // RenterFileGet uses the /renter/file/:siapath endpoint to query a file.
@@ -189,10 +190,11 @@ func (c *Client) RenterSetStreamCacheSizePost(cacheSize uint64) (err error) {
 
 // RenterStreamGet uses the /renter/stream endpoint to download data as a
 // stream.
-func (c *Client) RenterStreamGet(siaPath string) (resp []byte, err error) {
+func (c *Client) RenterStreamGet(siaPath string) ([]byte, error) {
 	siaPath = strings.TrimPrefix(siaPath, "/")
-	resp, err = c.getRawResponse("/renter/stream/" + siaPath)
-	return
+	_, body, err := c.getRawResponse("/renter/stream/" + siaPath)
+	b := <-body
+	return b.Data, errors.Compose(err, b.Err)
 }
 
 // RenterStreamPartialGet uses the /renter/stream endpoint to download a part

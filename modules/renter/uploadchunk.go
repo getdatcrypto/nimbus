@@ -6,8 +6,8 @@ import (
 	"os"
 	"sync"
 
-	"github.com/NebulousLabs/fastrand"
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/fastrand"
 
 	"gitlab.com/NebulousLabs/errors"
 )

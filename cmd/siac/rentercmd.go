@@ -606,7 +606,7 @@ func renterfilesdownloadcmd(path, destination string) {
 	// Queue the download. An error will be returned if the queueing failed, but
 	// the call will return before the download has completed. The call is made
 	// as an async call.
-	err := httpClient.RenterDownloadFullGet(path, destination, true)
+	uid, err := httpClient.RenterDownloadFullGet(path, destination, true)
 	if err != nil {
 		die("Download could not be started:", err)
 	}
@@ -618,7 +618,7 @@ func renterfilesdownloadcmd(path, destination string) {
 	}
 
 	// If the download is blocking, display progress as the file downloads.
-	err = downloadprogress(path, destination)
+	err = downloadprogress(uid)
 	if err != nil {
 		die("\nDownload could not be completed:", err)
 	}
@@ -646,7 +646,7 @@ func bandwidthUnit(bps uint64) string {
 
 // downloadprogress will display the progress of the provided download to the
 // user, and return an error when the download is finished.
-func downloadprogress(siapath, destination string) error {
+func downloadprogress(uid string) error {
 	start := time.Now()
 
 	// helper type used for measurements.
@@ -661,26 +661,12 @@ func downloadprogress(siapath, destination string) error {
 		time:     time.Now(),
 	}}
 	for range time.Tick(OutputRefreshRate) {
-		// Get the list of downloads.
-		queue, err := httpClient.RenterDownloadsGet()
+		// Get the download.
+		d, err := httpClient.RenterDownloadByUID(uid)
+		// If we couldn't fetch the download, either continue or give up.
 		if err != nil {
-			continue // benign
-		}
-
-		// Search for the download in the list of downloads.
-		var d api.DownloadInfo
-		found := false
-		for _, d = range queue.Downloads {
-			if d.SiaPath == siapath && d.Destination == destination {
-				found = true
-				break
-			}
-		}
-		// If the download has not appeared in the queue yet, either continue or
-		// give up.
-		if !found {
 			if time.Since(start) > RenterDownloadTimeout {
-				return errors.New("Unable to find download in queue")
+				return errors.AddContext(err, "Unable to find download in queue")
 			}
 			continue
 		}
