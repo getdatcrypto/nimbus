@@ -1,10 +1,12 @@
 package renter
 
 import (
+	"encoding/hex"
 	"io"
 	"os"
 	"sync"
 
+	"github.com/NebulousLabs/fastrand"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 
 	"gitlab.com/NebulousLabs/errors"
@@ -146,6 +148,8 @@ func (r *Renter) managedDownloadLogicalChunkData(chunk *unfinishedUploadChunk) e
 		offset:        uint64(chunk.offset),
 		overdrive:     0, // No need to rush the latency on repair downloads.
 		priority:      0, // Repair downloads are completely de-prioritized.
+
+		uid: hex.EncodeToString(fastrand.Bytes(8)),
 	})
 	if err != nil {
 		return err

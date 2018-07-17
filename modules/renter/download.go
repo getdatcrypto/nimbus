@@ -124,7 +124,6 @@ package renter
 // heap.
 
 import (
-	"encoding/hex"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -132,7 +131,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/NebulousLabs/fastrand"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
@@ -188,6 +186,7 @@ type (
 		offset        uint64        // Offset within the file to start the download. Must be less than the total filesize.
 		overdrive     int           // How many extra pieces to download to prevent slow hosts from being a bottleneck.
 		priority      uint64        // Files with a higher priority will be downloaded first.
+		uid           string        // unique identifier for the download
 	}
 )
 
@@ -330,6 +329,7 @@ func (r *Renter) managedDownload(p modules.RenterDownloadParameters) (*download,
 		offset:        p.Offset,
 		overdrive:     3, // TODO: moderate default until full overdrive support is added.
 		priority:      5, // TODO: moderate default until full priority support is added.
+		uid:           p.UID,
 	})
 	if err != nil {
 		return nil, err
@@ -360,6 +360,9 @@ func (r *Renter) managedNewDownload(params downloadParams) (*download, error) {
 	if params.offset+params.length > params.file.size {
 		return nil, errors.New("download is requesting data past the boundary of the file")
 	}
+	if params.uid == "" {
+		return nil, errors.New("download must have a uid")
+	}
 
 	// Create the download object.
 	d := &download{
@@ -380,7 +383,7 @@ func (r *Renter) managedNewDownload(params downloadParams) (*download, error) {
 		log:           r.log,
 		memoryManager: r.memoryManager,
 
-		uid: hex.EncodeToString(fastrand.Bytes(8)),
+		uid: params.uid,
 	}
 
 	// Determine which chunks to download.

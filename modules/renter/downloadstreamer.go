@@ -2,11 +2,13 @@ package renter
 
 import (
 	"bytes"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"math"
 	"time"
 
+	"github.com/NebulousLabs/fastrand"
 	"gitlab.com/NebulousLabs/errors"
 )
 
@@ -85,6 +87,7 @@ func (s *streamer) Read(p []byte) (n int, err error) {
 		offset:        uint64(s.offset),
 		overdrive:     5,    // TODO: high default until full overdrive support is added.
 		priority:      1000, // TODO: high default until full priority support is added.
+		uid:           hex.EncodeToString(fastrand.Bytes(8)),
 	})
 	if err != nil {
 		return 0, errors.AddContext(err, "failed to create new download")

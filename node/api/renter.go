@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/hex"
 	"fmt"
 	"net/http"
 	"path/filepath"
@@ -13,6 +14,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/renter"
 	"gitlab.com/NebulousLabs/Sia/types"
 
+	"github.com/NebulousLabs/fastrand"
 	"github.com/julienschmidt/httprouter"
 )
 
@@ -582,6 +584,11 @@ func (api *API) renterDownloadHandler(w http.ResponseWriter, req *http.Request, 
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
 		return
 	}
+	// Create UID and set it in the header.
+	uid := hex.EncodeToString(fastrand.Bytes(8))
+	w.Header().Set("uid", uid)
+	params.UID = uid
+
 	if params.Async {
 		err = api.renter.DownloadAsync(params)
 	} else {

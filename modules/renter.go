@@ -355,8 +355,8 @@ type Renter interface {
 	// DeleteFile deletes a file entry from the renter.
 	DeleteFile(path string) error
 
-	// Download performs a download according to the parameters passed, including
-	// downloads of `offset` and `length` type.
+	// Download performs a download according to the parameters passed,
+	// including downloads of `offset` and `length` type.
 	Download(params RenterDownloadParameters) error
 
 	// Download performs a download according to the parameters passed without
@@ -436,4 +436,5 @@ type RenterDownloadParameters struct {
 	Offset      uint64
 	SiaPath     string
 	Destination string
+	UID         string
 }
