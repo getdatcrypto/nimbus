@@ -850,6 +850,16 @@ func renterpricescmd() {
 		die("Could not read the renter prices:", err)
 	}
 
+	// Check if all the estimates are zero
+	zeroDS := rpg.DownloadTerabyte.Cmp(types.ZeroCurrency) == 0
+	zeroUS := rpg.UploadTerabyte.Cmp(types.ZeroCurrency) == 0
+	zeroSS := rpg.StorageTerabyteMonth.Cmp(types.ZeroCurrency) == 0
+	zeroFCS := rpg.FormContracts.Cmp(types.ZeroCurrency) == 0
+	if zeroDS && zeroUS && zeroSS && zeroFCS {
+		fmt.Println("Could not generate estimates, sync not complete or no contracts created.")
+		return
+	}
+
 	fmt.Println("Renter Prices (estimated):")
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 	fmt.Fprintln(w, "\tFees for Creating a Set of Contracts:\t", currencyUnits(rpg.FormContracts))
