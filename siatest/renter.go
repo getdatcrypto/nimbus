@@ -107,7 +107,7 @@ func (tn *TestNode) StreamPartial(rf *RemoteFile, lf *LocalFile, from, to uint64
 // If the corresponding download info was found, DownloadInfo also performs a
 // few sanity checks on its fields.
 func (tn *TestNode) DownloadInfo(lf *LocalFile, rf *RemoteFile) (*api.DownloadInfo, error) {
-	di, err := tn.RenterDownloadByUID(lf.uid)
+	di, err := tn.RenterDownloadInfoByUID(lf.uid)
 	if err != nil {
 		return nil, err
 	}

@@ -97,9 +97,9 @@ func (c *Client) RenterClearDownloadsRangePost(after, before time.Time) (err err
 	return
 }
 
-// RenterDownloadByUID requests the /renter/downloads endpoint to get the
+// RenterDownloadInfoByUID requests the /renter/downloads endpoint to get the
 // history of a single download with the specified UID.
-func (c *Client) RenterDownloadByUID(uid string) (di api.DownloadInfo, err error) {
+func (c *Client) RenterDownloadInfoByUID(uid string) (di api.DownloadInfo, err error) {
 	err = c.get(fmt.Sprintf("/renter/downloads?uid=%s", uid), &di)
 	return
 }

@@ -133,7 +133,6 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/persist"
-	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 )
 
@@ -189,6 +188,34 @@ type (
 		uid           string        // unique identifier for the download
 	}
 )
+
+// downloadInfo creates a modules.DownloadInfo from a download.
+func (d *download) managedDownloadInfo() modules.DownloadInfo {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	download := modules.DownloadInfo{
+		Destination:     d.destinationString,
+		DestinationType: d.staticDestinationType,
+		Length:          d.staticLength,
+		Offset:          d.staticOffset,
+		SiaPath:         d.staticSiaPath,
+
+		Completed:            d.staticComplete(),
+		EndTime:              d.endTime,
+		Received:             atomic.LoadUint64(&d.atomicDataReceived),
+		StartTime:            d.staticStartTime,
+		StartTimeUnix:        d.staticStartTime.UnixNano(),
+		TotalDataTransferred: atomic.LoadUint64(&d.atomicTotalDataTransferred),
+		UID:                  d.uid,
+	}
+	if d.err != nil {
+		download.Error = d.err.Error()
+	} else {
+		download.Error = ""
+	}
+	return download
+}
 
 // managedFail will mark the download as complete, but with the provided error.
 // If the download has already failed, the error will be updated to be a
@@ -336,9 +363,7 @@ func (r *Renter) managedDownload(p modules.RenterDownloadParameters) (*download,
 	}
 
 	// Add the download object to the download queue.
-	r.downloadHistoryMu.Lock()
-	r.downloadHistory = append(r.downloadHistory, d)
-	r.downloadHistoryMu.Unlock()
+	r.downloadHistory.Add(d)
 
 	// Return the download object
 	return d, nil
@@ -490,47 +515,11 @@ func (r *Renter) managedNewDownload(params downloadParams) (*download, error) {
 	return d, nil
 }
 
-// DownloadByUID retrieves the download with the specified uid. It returns a
+// DownloadInfoByUID retrieves the download with the specified uid. It returns a
 // DownloadInfo object and true if the object was found. Otherwise it returns
 // false.
-func (r *Renter) DownloadByUID(uid string) (modules.DownloadInfo, bool) {
-	r.downloadHistoryMu.Lock()
-	defer r.downloadHistoryMu.Unlock()
-
-	for i := range r.downloadHistory {
-		if r.downloadHistory[i].uid != uid {
-			continue
-		}
-		// Order from most recent to least recent.
-		d := r.downloadHistory[i]
-		d.mu.Lock() // Lock required for d.endTime only.
-		download := modules.DownloadInfo{
-			Destination:     d.destinationString,
-			DestinationType: d.staticDestinationType,
-			Length:          d.staticLength,
-			Offset:          d.staticOffset,
-			SiaPath:         d.staticSiaPath,
-
-			Completed:            d.staticComplete(),
-			EndTime:              d.endTime,
-			Received:             atomic.LoadUint64(&d.atomicDataReceived),
-			StartTime:            d.staticStartTime,
-			StartTimeUnix:        d.staticStartTime.UnixNano(),
-			TotalDataTransferred: atomic.LoadUint64(&d.atomicTotalDataTransferred),
-			UID:                  d.uid,
-		}
-		// Release download lock before calling d.Err(), which will acquire the
-		// lock. The error needs to be checked separately because we need to
-		// know if it's 'nil' before grabbing the error string.
-		d.mu.Unlock()
-		if d.Err() != nil {
-			download.Error = d.Err().Error()
-		} else {
-			download.Error = ""
-		}
-		return download, true
-	}
-	return modules.DownloadInfo{}, false
+func (r *Renter) DownloadInfoByUID(uid string) (modules.DownloadInfo, bool) {
+	return r.downloadHistory.DownloadInfoByUID(uid)
 }
 
 // DownloadHistory returns the list of downloads that have been performed. Will
@@ -543,40 +532,7 @@ func (r *Renter) DownloadByUID(uid string) (modules.DownloadInfo, bool) {
 // actually desirable, please consult core team + app dev community before
 // deciding what to implement.
 func (r *Renter) DownloadHistory() []modules.DownloadInfo {
-	r.downloadHistoryMu.Lock()
-	defer r.downloadHistoryMu.Unlock()
-
-	downloads := make([]modules.DownloadInfo, len(r.downloadHistory))
-	for i := range r.downloadHistory {
-		// Order from most recent to least recent.
-		d := r.downloadHistory[len(r.downloadHistory)-i-1]
-		d.mu.Lock() // Lock required for d.endTime only.
-		downloads[i] = modules.DownloadInfo{
-			Destination:     d.destinationString,
-			DestinationType: d.staticDestinationType,
-			Length:          d.staticLength,
-			Offset:          d.staticOffset,
-			SiaPath:         d.staticSiaPath,
-
-			Completed:            d.staticComplete(),
-			EndTime:              d.endTime,
-			Received:             atomic.LoadUint64(&d.atomicDataReceived),
-			StartTime:            d.staticStartTime,
-			StartTimeUnix:        d.staticStartTime.UnixNano(),
-			TotalDataTransferred: atomic.LoadUint64(&d.atomicTotalDataTransferred),
-			UID:                  d.uid,
-		}
-		// Release download lock before calling d.Err(), which will acquire the
-		// lock. The error needs to be checked separately because we need to
-		// know if it's 'nil' before grabbing the error string.
-		d.mu.Unlock()
-		if d.Err() != nil {
-			downloads[i].Error = d.Err().Error()
-		} else {
-			downloads[i].Error = ""
-		}
-	}
-	return downloads
+	return r.downloadHistory.DownloadHistory()
 }
 
 // ClearDownloadHistory clears the renter's download history inclusive of the
@@ -590,35 +546,5 @@ func (r *Renter) ClearDownloadHistory(after, before time.Time) error {
 		return err
 	}
 	defer r.tg.Done()
-	r.downloadHistoryMu.Lock()
-	defer r.downloadHistoryMu.Unlock()
-
-	// Check to confirm there are downloads to clear
-	if len(r.downloadHistory) == 0 {
-		return nil
-	}
-
-	// Timestamp validation
-	if before.Before(after) {
-		return errors.New("before timestamp can not be newer then after timestamp")
-	}
-
-	// Clear download history if both before and after timestamps are zero values
-	if before.Equal(types.EndOfTime) && after.IsZero() {
-		r.downloadHistory = r.downloadHistory[:0]
-		return nil
-	}
-
-	// Find and return downloads that are not within the given range
-	withinTimespan := func(t time.Time) bool {
-		return (t.After(after) || t.Equal(after)) && (t.Before(before) || t.Equal(before))
-	}
-	filtered := r.downloadHistory[:0]
-	for _, d := range r.downloadHistory {
-		if !withinTimespan(d.staticStartTime) {
-			filtered = append(filtered, d)
-		}
-	}
-	r.downloadHistory = filtered
-	return nil
+	return r.downloadHistory.ClearDownloadHistory(after, before)
 }

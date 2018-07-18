@@ -662,7 +662,7 @@ func downloadprogress(uid string) error {
 	}}
 	for range time.Tick(OutputRefreshRate) {
 		// Get the download.
-		d, err := httpClient.RenterDownloadByUID(uid)
+		d, err := httpClient.RenterDownloadInfoByUID(uid)
 		// If we couldn't fetch the download, either continue or give up.
 		if err != nil {
 			if time.Since(start) > RenterDownloadTimeout {

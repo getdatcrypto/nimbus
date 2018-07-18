@@ -1,10 +1,12 @@
 package renter
 
 import (
+	"encoding/hex"
 	"testing"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/fastrand"
 )
 
 // TestClearDownloads tests all the edge cases of the ClearDownloadHistory Method
@@ -29,7 +31,7 @@ func TestClearDownloads(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(rt.renter.downloadHistory) != length {
+	if len(rt.renter.downloadHistory.historySlice) != length {
 		t.Fatal("Download should not have been cleared")
 	}
 	// doesn't exist - after
@@ -37,7 +39,7 @@ func TestClearDownloads(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(rt.renter.downloadHistory) != length {
+	if len(rt.renter.downloadHistory.historySlice) != length {
 		t.Fatal("Download should not have been cleared")
 	}
 	// doesn't exist - within range
@@ -45,7 +47,7 @@ func TestClearDownloads(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(rt.renter.downloadHistory) != length {
+	if len(rt.renter.downloadHistory.historySlice) != length {
 		t.Fatal("Download should not have been cleared")
 	}
 	// Remove Last Download
@@ -53,10 +55,10 @@ func TestClearDownloads(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(rt.renter.downloadHistory) != length-1 {
+	if len(rt.renter.downloadHistory.historySlice) != length-1 {
 		t.Fatal("Download should have been cleared")
 	}
-	if rt.renter.downloadHistory[length-2].staticStartTime.Unix() == 9 {
+	if rt.renter.downloadHistory.historySlice[length-2].staticStartTime.Unix() == 9 {
 		t.Fatal("Download not removed")
 	}
 	// Remove First Download
@@ -64,10 +66,10 @@ func TestClearDownloads(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(rt.renter.downloadHistory) != length-1 {
+	if len(rt.renter.downloadHistory.historySlice) != length-1 {
 		t.Fatal("Download should have been cleared")
 	}
-	if rt.renter.downloadHistory[0].staticStartTime.Unix() == 2 {
+	if rt.renter.downloadHistory.historySlice[0].staticStartTime.Unix() == 2 {
 		t.Fatal("Download not removed")
 	}
 	// Remove download from middle of history
@@ -75,10 +77,10 @@ func TestClearDownloads(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(rt.renter.downloadHistory) != length-1 {
+	if len(rt.renter.downloadHistory.historySlice) != length-1 {
 		t.Fatal("Download should have been cleared")
 	}
-	for _, d := range rt.renter.downloadHistory {
+	for _, d := range rt.renter.downloadHistory.historySlice {
 		if d.staticStartTime.Unix() == 6 {
 			t.Fatal("Download not removed")
 		}
@@ -90,7 +92,7 @@ func TestClearDownloads(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(rt.renter.downloadHistory) != 0 {
+	if len(rt.renter.downloadHistory.historySlice) != 0 {
 		t.Fatal("Download history should have been cleared")
 	}
 	// both exist - within range
@@ -138,7 +140,7 @@ func TestClearDownloads(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(rt.renter.downloadHistory) != 0 {
+	if !checkDownloadHistoryLen(rt.renter.downloadHistory, 0) {
 		t.Fatal("Download history should have been cleared")
 	}
 	// neither exist - inside
@@ -164,7 +166,7 @@ func TestClearDownloads(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(rt.renter.downloadHistory) != 0 {
+	if !checkDownloadHistoryLen(rt.renter.downloadHistory, 0) {
 		t.Fatal("Download history should have been cleared")
 	}
 	// doesn't exist - within range
@@ -180,15 +182,15 @@ func TestClearDownloads(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(rt.renter.downloadHistory) != length {
-		t.Fatal("No downloads should not have been cleared")
+	if !checkDownloadHistoryLen(rt.renter.downloadHistory, length) {
+		t.Fatal("Download history not cleared as expected.")
 	}
 	// doesn't exist - after
 	_, err = clearDownloadHistory(rt, 0, 10)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(rt.renter.downloadHistory) != 0 {
+	if !checkDownloadHistoryLen(rt.renter.downloadHistory, 0) {
 		t.Fatal("Download history should have been cleared")
 	}
 
@@ -206,7 +208,7 @@ func TestClearDownloads(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(rt.renter.downloadHistory) != 0 {
+	if !checkDownloadHistoryLen(rt.renter.downloadHistory, 0) {
 		t.Fatal("Download history should have been cleared")
 	}
 	// doesn't exist - within range
@@ -222,15 +224,15 @@ func TestClearDownloads(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(rt.renter.downloadHistory) != length {
-		t.Fatal("No downloads should not have been cleared")
+	if !checkDownloadHistoryLen(rt.renter.downloadHistory, length) {
+		t.Fatal("Download history not cleared as expected")
 	}
 	// doesn't exist - before
 	_, err = clearDownloadHistory(rt, 1, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(rt.renter.downloadHistory) != 0 {
+	if !checkDownloadHistoryLen(rt.renter.downloadHistory, 0) {
 		t.Fatal("Download history should have been cleared")
 	}
 
@@ -239,8 +241,8 @@ func TestClearDownloads(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(rt.renter.downloadHistory) != 0 {
-		t.Fatal("Download History not cleared")
+	if !checkDownloadHistoryLen(rt.renter.downloadHistory, 0) {
+		t.Fatal("Download history should have been cleared")
 	}
 }
 
@@ -251,19 +253,23 @@ func clearDownloadHistory(rt *renterTester, after, before int) (int, error) {
 	// Build/Reset download History
 	// Skipping 5 and 7 so there are clear times missing that can
 	// be referenced
-	rt.renter.downloadHistoryMu.Lock()
-	downloads := []*download{}
+	rt.renter.downloadHistory.mu.Lock()
+	downloadSlice := []*download{}
+	downloadMap := make(map[string]*download)
 	for i := 2; i < 10; i++ {
 		if i != 5 && i != 7 {
 			d := &download{
 				staticStartTime: time.Unix(int64(i), 0),
+				uid:             hex.EncodeToString(fastrand.Bytes(8)),
 			}
-			downloads = append(downloads, d)
+			downloadSlice = append(downloadSlice, d)
+			downloadMap[d.uid] = d
 		}
 	}
-	rt.renter.downloadHistory = downloads
-	length := len(rt.renter.downloadHistory)
-	rt.renter.downloadHistoryMu.Unlock()
+	rt.renter.downloadHistory.historySlice = downloadSlice
+	rt.renter.downloadHistory.historyMap = downloadMap
+	length := len(rt.renter.downloadHistory.historySlice)
+	rt.renter.downloadHistory.mu.Unlock()
 
 	// clear download history
 	var afterTime time.Time
@@ -283,20 +289,28 @@ func clearDownloadHistory(rt *renterTester, after, before int) (int, error) {
 // checkDownloadHistory is a helper function for TestClearDownloads
 // it compares the renter's download history against what is expected
 // after ClearDownloadHistory is called
-func checkDownloadHistory(downloads []*download, check []int64) bool {
-	if downloads == nil && check == nil {
+func checkDownloadHistory(history *downloadHistory, check []int64) bool {
+	if history.historySlice == nil && check == nil {
 		return true
 	}
-	if downloads == nil || check == nil {
+	if history.historySlice == nil || check == nil {
 		return false
 	}
-	if len(downloads) != len(check) {
+	if len(history.historySlice) != len(check) || len(history.historyMap) != len(check) {
 		return false
 	}
-	for i := range downloads {
-		if downloads[i].staticStartTime.Unix() != check[i] {
+	for i := range history.historySlice {
+		if history.historySlice[i].staticStartTime.Unix() != check[i] {
 			return false
 		}
+	}
+	return true
+}
+
+// checkDownloadHistoryLen is a helper function that checks that the download history slice and map have the correct length.
+func checkDownloadHistoryLen(history *downloadHistory, length int) bool {
+	if len(history.historySlice) != length || len(history.historyMap) != length {
+		return false
 	}
 	return true
 }

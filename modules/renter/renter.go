@@ -25,6 +25,7 @@ import (
 	"reflect"
 	"strings"
 	"sync"
+	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -163,6 +164,98 @@ type trackedFile struct {
 	RepairPath string
 }
 
+// downloadHistory is a helper struct that allows for quick access to a range
+// of downloads via timestamps and also individual downloads via uid.
+type downloadHistory struct {
+	historySlice []*download          // download history ordered by time
+	historyMap   map[string]*download // mapping of uid to download
+	mu           sync.Mutex
+}
+
+// Add adds a new download to the download history.
+func (dh *downloadHistory) Add(d *download) {
+	dh.mu.Lock()
+	defer dh.mu.Unlock()
+	dh.historySlice = append(dh.historySlice, d)
+	dh.historyMap[d.uid] = d
+}
+
+// ClearDownloadHistory clears the renter's download history inclusive of the
+// provided before and after timestamps
+func (dh *downloadHistory) ClearDownloadHistory(after, before time.Time) error {
+	dh.mu.Lock()
+	defer dh.mu.Unlock()
+
+	// Check to confirm there are downloads to clear
+	if len(dh.historySlice) == 0 {
+		return nil
+	}
+
+	// Timestamp validation
+	if before.Before(after) {
+		return errors.New("before timestamp can not be newer then after timestamp")
+	}
+
+	// Clear download history if both before and after timestamps are zero values
+	if before.Equal(types.EndOfTime) && after.IsZero() {
+		dh.historySlice = dh.historySlice[:0]
+		dh.historyMap = make(map[string]*download)
+		return nil
+	}
+
+	// Find and return downloads that are not within the given range
+	withinTimespan := func(t time.Time) bool {
+		return (t.After(after) || t.Equal(after)) && (t.Before(before) || t.Equal(before))
+	}
+	filtered := dh.historySlice[:0]
+	removed := make([]*download, 0, len(dh.historySlice))
+	for _, d := range dh.historySlice {
+		if !withinTimespan(d.staticStartTime) {
+			filtered = append(filtered, d)
+		} else {
+			removed = append(removed, d)
+		}
+	}
+	dh.historySlice = filtered
+
+	// Clean the removed downloads from tahe map.
+	for _, d := range removed {
+		delete(dh.historyMap, d.uid)
+	}
+	return nil
+}
+
+// DownloadInfoByUID retrieves the download with the specified uid. It returns a
+// DownloadInfo object and true if the object was found. Otherwise it returns
+// false.
+func (dh *downloadHistory) DownloadInfoByUID(uid string) (modules.DownloadInfo, bool) {
+	dh.mu.Lock()
+	di, ok := dh.historyMap[uid]
+	dh.mu.Unlock()
+	return di.managedDownloadInfo(), ok
+}
+
+// DownloadHistory returns the list of downloads that have been performed. Will
+// include downloads that have not yet completed. Downloads will be roughly,
+// but not precisely, sorted according to start time.
+//
+func (dh *downloadHistory) DownloadHistory() []modules.DownloadInfo {
+	// Copy the slice to make sure we don't violate the locking conventions by
+	// acquiring the download lock while we hold the history lock.
+	dh.mu.Lock()
+	history := make([]*download, len(dh.historySlice))
+	copy(history, dh.historySlice)
+	dh.mu.Unlock()
+
+	downloads := make([]modules.DownloadInfo, len(history))
+	for i := range history {
+		// Order from most recent to least recent.
+		d := history[len(history)-i-1]
+		downloads[i] = d.managedDownloadInfo()
+	}
+	return downloads
+}
+
 // A Renter is responsible for tracking all of the files that a user has
 // uploaded to Sia, as well as the locations and health of these files.
 //
@@ -190,8 +283,7 @@ type Renter struct {
 	//
 	// TODO: Currently the download history doesn't include repair-initiated
 	// downloads, and instead only contains user-initiated downloads.
-	downloadHistory   []*download
-	downloadHistoryMu sync.Mutex
+	downloadHistory *downloadHistory
 
 	// Upload management.
 	uploadHeap uploadHeap

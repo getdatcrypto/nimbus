@@ -446,7 +446,7 @@ func (api *API) renterDownloadsHandler(w http.ResponseWriter, req *http.Request,
 	// If a specific uid was specified we return a single download.
 	uid := req.FormValue("uid")
 	if uid != "" {
-		di, ok := api.renter.DownloadByUID(uid)
+		di, ok := api.renter.DownloadInfoByUID(uid)
 		if !ok {
 			WriteError(w, Error{"Couldn't find download for specified UID"}, http.StatusBadRequest)
 			return

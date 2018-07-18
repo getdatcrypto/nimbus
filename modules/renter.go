@@ -343,10 +343,10 @@ type Renter interface {
 	// began.
 	CurrentPeriod() types.BlockHeight
 
-	// DownloadByUID retrieves the download with the specified uid. It returns a
+	// DownloadInfoByUID retrieves the download with the specified uid. It returns a
 	// DownloadInfo object and true if the object was found. Otherwise it returns
 	// false.
-	DownloadByUID(uid string) (DownloadInfo, bool)
+	DownloadInfoByUID(uid string) (DownloadInfo, bool)
 
 	// PeriodSpending returns the amount spent on contracts in the current
 	// billing period.

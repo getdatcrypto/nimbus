@@ -13,13 +13,12 @@ import (
 )
 
 type (
-	// LocalFile is a helper struct that represents a file uploaded to the Sia
-	// network.
+	// LocalFile is a helper struct that represents a file on disk.
 	LocalFile struct {
 		path     string
 		size     int
 		checksum crypto.Hash
-		uid      string
+		uid      string // uid of download. Empty string if file was created locally.
 	}
 )
 

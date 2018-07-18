@@ -127,7 +127,7 @@ func testClearDownloadHistory(t *testing.T, tg *siatest.TestGroup) {
 
 	// Make sure that we can also individually grab all the downloads.
 	for _, di := range rdg.Downloads {
-		d, err := r.RenterDownloadByUID(di.UID)
+		d, err := r.RenterDownloadInfoByUID(di.UID)
 		if err != nil {
 			t.Fatal(err)
 		}
