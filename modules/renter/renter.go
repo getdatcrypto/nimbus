@@ -172,6 +172,13 @@ type downloadHistory struct {
 	mu           sync.Mutex
 }
 
+// newDownloadHistory creates a new downloadHistory object.
+func newDownloadHistory() *downloadHistory {
+	return &downloadHistory{
+		historyMap: make(map[string]*download),
+	}
+}
+
 // Add adds a new download to the download history.
 func (dh *downloadHistory) Add(d *download) {
 	dh.mu.Lock()
@@ -580,6 +587,8 @@ func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 		// will miss work altogether.
 		newDownloads: make(chan struct{}, 1),
 		downloadHeap: new(downloadChunkHeap),
+
+		downloadHistory: newDownloadHistory(),
 
 		uploadHeap: uploadHeap{
 			activeChunks: make(map[uploadChunkID]struct{}),
