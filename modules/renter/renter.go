@@ -21,7 +21,6 @@ package renter
 // setBandwidthLimits function.
 
 import (
-	"errors"
 	"reflect"
 	"strings"
 	"sync"
@@ -34,6 +33,7 @@ import (
 	siasync "gitlab.com/NebulousLabs/Sia/sync"
 	"gitlab.com/NebulousLabs/Sia/types"
 
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/threadgroup"
 )
 
@@ -233,23 +233,23 @@ func (r *Renter) Close() error {
 //
 // TODO: Make this function line up with the actual settings in the renter.
 // Perhaps even make it so it uses the renter's actual contracts if it has any.
-func (r *Renter) PriceEstimation() modules.RenterPriceEstimation {
+func (r *Renter) PriceEstimation() (modules.RenterPriceEstimation, error) {
 	id := r.mu.RLock()
 	lastEstimation := r.lastEstimation
 	r.mu.RUnlock(id)
 	if !reflect.DeepEqual(lastEstimation, modules.RenterPriceEstimation{}) {
-		return lastEstimation
+		return lastEstimation, nil
 	}
 
 	// Grab hosts to perform the estimation.
 	hosts, err := r.hostDB.RandomHosts(priceEstimationScope, nil, nil)
 	if err != nil {
-		return modules.RenterPriceEstimation{}
+		return modules.RenterPriceEstimation{}, errors.AddContext(err, "could not generate estimate")
 	}
 
 	// Check if there are zero hosts, which means no estimation can be made.
 	if len(hosts) == 0 {
-		return modules.RenterPriceEstimation{}
+		return modules.RenterPriceEstimation{}, errors.New("estimate cannot be made, there are no hosts")
 	}
 
 	// Add up the costs for each host.
@@ -298,7 +298,7 @@ func (r *Renter) PriceEstimation() modules.RenterPriceEstimation {
 	r.lastEstimation = est
 	r.mu.Unlock(id)
 
-	return est
+	return est, nil
 }
 
 // setBandwidthLimits will change the bandwidth limits of the renter based on
