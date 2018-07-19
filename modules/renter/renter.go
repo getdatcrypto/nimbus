@@ -252,40 +252,69 @@ func (r *Renter) PriceEstimation() (modules.RenterPriceEstimation, error) {
 		return modules.RenterPriceEstimation{}, errors.New("estimate cannot be made, there are no hosts")
 	}
 
-	// Add up the costs for each host.
 	var totalContractCost types.Currency
 	var totalDownloadCost types.Currency
 	var totalStorageCost types.Currency
 	var totalUploadCost types.Currency
-	for _, host := range hosts {
-		totalContractCost = totalContractCost.Add(host.ContractPrice)
-		totalDownloadCost = totalDownloadCost.Add(host.DownloadBandwidthPrice)
-		totalStorageCost = totalStorageCost.Add(host.StoragePrice)
-		totalUploadCost = totalUploadCost.Add(host.UploadBandwidthPrice)
+	if len(r.Contracts()) == 0 && len(r.OldContracts()) == 0 {
+		// Add up the costs for each host.
+		for _, host := range hosts {
+			totalContractCost = totalContractCost.Add(host.ContractPrice)
+			totalDownloadCost = totalDownloadCost.Add(host.DownloadBandwidthPrice)
+			totalStorageCost = totalStorageCost.Add(host.StoragePrice)
+			totalUploadCost = totalUploadCost.Add(host.UploadBandwidthPrice)
+		}
+
+		// Factor in redundancy.
+		totalStorageCost = totalStorageCost.Mul64(3) // TODO: follow file settings?
+		totalUploadCost = totalUploadCost.Mul64(3)   // TODO: follow file settings?
+
+		// Perform averages.
+		totalContractCost = totalContractCost.Div64(uint64(len(hosts)))
+		totalDownloadCost = totalDownloadCost.Div64(uint64(len(hosts)))
+		totalStorageCost = totalStorageCost.Div64(uint64(len(hosts)))
+		totalUploadCost = totalUploadCost.Div64(uint64(len(hosts)))
+
+		// Take the average of the host set to estimate the overall cost of the
+		// contract forming.
+		totalContractCost = totalContractCost.Mul64(uint64(priceEstimationScope))
+
+		// Add the cost of paying the transaction fees for the first contract.
+		_, feePerByte := r.tpool.FeeEstimation()
+		totalContractCost = totalContractCost.Add(feePerByte.Mul64(1000).Mul64(uint64(priceEstimationScope)))
+
+	} else {
+		// Add up costs from renter contracts
+		contracts := r.Contracts()
+		oldContracts := r.OldContracts()
+		for _, c := range contracts {
+			totalContractCost = totalContractCost.Add(c.ContractFee)
+			totalContractCost = totalContractCost.Add(c.SiafundFee)
+			totalContractCost = totalContractCost.Add(c.TxnFee)
+			totalDownloadCost = totalDownloadCost.Add(c.DownloadSpending)
+			totalUploadCost = totalUploadCost.Add(c.UploadSpending)
+			totalStorageCost = totalStorageCost.Add(c.StorageSpending)
+		}
+		for _, c := range oldContracts {
+			totalContractCost = totalContractCost.Add(c.ContractFee)
+			totalContractCost = totalContractCost.Add(c.SiafundFee)
+			totalContractCost = totalContractCost.Add(c.TxnFee)
+			totalDownloadCost = totalDownloadCost.Add(c.DownloadSpending)
+			totalUploadCost = totalUploadCost.Add(c.UploadSpending)
+			totalStorageCost = totalStorageCost.Add(c.StorageSpending)
+		}
+
+		// Perform averages.
+		totalContractCost = totalContractCost.Div64(uint64(len(contracts) + len(oldContracts)))
+		totalDownloadCost = totalDownloadCost.Div64(uint64(len(contracts) + len(oldContracts)))
+		totalStorageCost = totalStorageCost.Div64(uint64(len(contracts) + len(oldContracts)))
+		totalUploadCost = totalUploadCost.Div64(uint64(len(contracts) + len(oldContracts)))
 	}
 
 	// Convert values to being human-scale.
 	totalDownloadCost = totalDownloadCost.Mul(modules.BytesPerTerabyte)
 	totalStorageCost = totalStorageCost.Mul(modules.BlockBytesPerMonthTerabyte)
 	totalUploadCost = totalUploadCost.Mul(modules.BytesPerTerabyte)
-
-	// Factor in redundancy.
-	totalStorageCost = totalStorageCost.Mul64(3) // TODO: follow file settings?
-	totalUploadCost = totalUploadCost.Mul64(3)   // TODO: follow file settings?
-
-	// Perform averages.
-	totalContractCost = totalContractCost.Div64(uint64(len(hosts)))
-	totalDownloadCost = totalDownloadCost.Div64(uint64(len(hosts)))
-	totalStorageCost = totalStorageCost.Div64(uint64(len(hosts)))
-	totalUploadCost = totalUploadCost.Div64(uint64(len(hosts)))
-
-	// Take the average of the host set to estimate the overall cost of the
-	// contract forming.
-	totalContractCost = totalContractCost.Mul64(uint64(priceEstimationScope))
-
-	// Add the cost of paying the transaction fees for the first contract.
-	_, feePerByte := r.tpool.FeeEstimation()
-	totalContractCost = totalContractCost.Add(feePerByte.Mul64(1000).Mul64(uint64(priceEstimationScope)))
 
 	est := modules.RenterPriceEstimation{
 		FormContracts:        totalContractCost,
