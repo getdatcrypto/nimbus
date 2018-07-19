@@ -175,10 +175,16 @@ func TestRenterPricesVolatility(t *testing.T) {
 	dbe.StoragePrice = types.SiacoinPrecision
 	dbe.UploadBandwidthPrice = types.SiacoinPrecision
 	hdb.dbEntries = append(hdb.dbEntries, dbe)
-	initial := rt.renter.PriceEstimation()
+	initial, err := rt.renter.PriceEstimation()
+	if err != nil {
+		t.Fatal(err)
+	}
 	dbe.ContractPrice = dbe.ContractPrice.Mul64(2)
 	hdb.dbEntries = append(hdb.dbEntries, dbe)
-	after := rt.renter.PriceEstimation()
+	after, err := rt.renter.PriceEstimation()
+	if err != nil {
+		t.Fatal(err)
+	}
 	if !reflect.DeepEqual(initial, after) {
 		t.Log(initial)
 		t.Log(after)
@@ -188,7 +194,10 @@ func TestRenterPricesVolatility(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	after = rt.renter.PriceEstimation()
+	after, err = rt.renter.PriceEstimation()
+	if err != nil {
+		t.Fatal(err)
+	}
 	if reflect.DeepEqual(initial, after) {
 		t.Fatal("expected renter price estimation to change after mining a block")
 	}
