@@ -610,6 +610,7 @@ func renterfilesdownloadcmd(path, destination string) {
 	if err != nil {
 		die("Download could not be started:", err)
 	}
+	fmt.Println("UID:", uid)
 
 	// If the download is async, report success.
 	if renterDownloadAsync {
