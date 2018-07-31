@@ -253,6 +253,20 @@ func (r *Renter) saveDirMetadata(path string, metadata dirMetadata) error {
 	return persist.SaveJSON(dirMetadataHeader, metadata, filepath.Join(path, SiaDirMetadata))
 }
 
+// updateDirMetadata updates all the renter's directories' metadata
+func (r *Renter) updateDirMetadata(redundancies map[string]float64) error {
+	for path, redundancy := range redundancies {
+		err := r.saveDirMetadata(path, dirMetadata{
+			LastUpdate:    time.Now().UnixNano(),
+			MinRedundancy: redundancy,
+		})
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // saveFile saves a file to the renter directory.
 func (r *Renter) saveFile(f *siafile.SiaFile) error {
 	if f.Deleted() { // TODO: violation of locking convention
