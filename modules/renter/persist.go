@@ -199,7 +199,7 @@ func (r *Renter) createDir(path string) error {
 	// TODO: this should be change when files are moved out of the top level
 	// directory of the renter.
 	for path != filepath.Dir(r.persistDir) {
-		if err := createDirMetadata(path); err != nil {
+		if err := r.createDirMetadata(path); err != nil {
 			return err
 		}
 		path = filepath.Dir(path)
@@ -209,7 +209,7 @@ func (r *Renter) createDir(path string) error {
 
 // createDirMetadata makes sure there is a metadata file in each directory of
 // the renter and updates or creates one as needed
-func createDirMetadata(path string) error {
+func (r *Renter) createDirMetadata(path string) error {
 	fullPath := filepath.Join(path, SiaDirMetadata)
 	// Check if metadata file exists
 	if _, err := os.Stat(fullPath); err == nil {
@@ -223,7 +223,7 @@ func createDirMetadata(path string) error {
 		MinRedundancy: float64(0),
 	}
 
-	return persist.SaveJSON(dirMetadataHeader, data, fullPath)
+	return r.saveDirMetadata(path, data)
 }
 
 // loadDirMetadata loads the directory metadata from disk
@@ -231,7 +231,7 @@ func (r *Renter) loadDirMetadata(path string) (dirMetadata, error) {
 	var metadata dirMetadata
 	err := persist.LoadJSON(dirMetadataHeader, &metadata, filepath.Join(path, SiaDirMetadata))
 	if os.IsNotExist(err) {
-		if err = createDirMetadata(path); err != nil {
+		if err = r.createDirMetadata(path); err != nil {
 			return metadata, err
 		}
 		return r.loadDirMetadata(path)
@@ -240,6 +240,11 @@ func (r *Renter) loadDirMetadata(path string) (dirMetadata, error) {
 		return metadata, err
 	}
 	return metadata, nil
+}
+
+// saveDirMetadata saves the directory metadata to disk
+func (r *Renter) saveDirMetadata(path string, metadata dirMetadata) error {
+	return persist.SaveJSON(dirMetadataHeader, metadata, filepath.Join(path, SiaDirMetadata))
 }
 
 // saveFile saves a file to the renter directory.
