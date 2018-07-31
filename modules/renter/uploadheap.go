@@ -19,6 +19,7 @@ package renter
 import (
 	"container/heap"
 	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -375,6 +376,64 @@ func (r *Renter) managedRefreshHostsAndWorkers() map[string]struct{} {
 	// Refresh the worker pool as well.
 	r.managedUpdateWorkerPool()
 	return hosts
+}
+
+// managedUpdateRenterRedundancy iterates over the renter's files and updates the
+// directories with the minimum redundancies
+//
+// TODO: the code of looping over files and building maps to then get the
+// redundancies could be broken out into it's own method.  It is used in
+// multiple places throughout the code I believe
+func (r *Renter) managedUpdateRenterRedundancy() error {
+	// TODO: To remove files from memory, update this code to read all files
+	// from disk
+	//
+	// Get all the files holding the readlock.
+	lockID := r.mu.RLock()
+	files := make([]*siafile.SiaFile, 0, len(r.files))
+	for _, file := range r.files {
+		files = append(files, file)
+	}
+	r.mu.RUnlock(lockID)
+
+	// Save host keys in map. We can't do that under the same lock since we
+	// need to call a public method on the file.
+	pks := make(map[string]types.SiaPublicKey)
+	goodForRenew := make(map[string]bool)
+	offline := make(map[string]bool)
+	for _, f := range files {
+		for _, pk := range f.HostPublicKeys() {
+			pks[string(pk.Key)] = pk
+		}
+	}
+
+	// Build 2 maps that map every pubkey to its offline and goodForRenew
+	// status.
+	for _, pk := range pks {
+		cu, ok := r.hostContractor.ContractUtility(pk)
+		if !ok {
+			continue
+		}
+		goodForRenew[string(pk.Key)] = ok && cu.GoodForRenew
+		offline[string(pk.Key)] = r.hostContractor.IsOffline(pk)
+	}
+
+	// Build map of minimum redundancies for each directory
+	redundancies := make(map[string]float64)
+	for _, file := range files {
+		redundancy := file.Redundancy(offline, goodForRenew)
+		path := filepath.Join(r.persistDir, filepath.Dir(file.SiaPath()))
+		for path != filepath.Dir(r.persistDir) {
+			r, ok := redundancies[path]
+			if ok && r > redundancy || !ok {
+				redundancies[path] = redundancy
+			}
+			path = filepath.Dir(path)
+		}
+	}
+
+	// Update directory metadatas
+	return r.updateDirMetadata(redundancies)
 }
 
 // threadedUploadLoop is a background thread that checks on the health of files,
