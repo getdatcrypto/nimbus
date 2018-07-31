@@ -402,6 +402,36 @@ func (r *Renter) threadedUploadLoop() {
 		// TODO: After replacing the filesystem to resemble a tree, we'll be
 		// able to go through the filesystem piecewise instead of doing
 		// everything all at once.
+		//
+		// TODO: update directory metadata with current redundancies, Should
+		// call a method like `managedUpdateRedundancies`
+		//
+		// STEPS
+		// - in both options, could create a map of [directory string]redundancy
+		// to track the minimum redundancy for each directory then iterate over
+		// the map and update the redundancy of each directory
+		//
+		// Option 1 - Walk through renter Directory
+		// Considerations:
+		// - Would need to figure out how to best determine if the directory
+		// metadata needs to be replaced. How to know if the redundancy was
+		// updated in the current loop. Could check timestamp.  Replace if
+		// timestamp is not within the last 5 minutes, otherwise compare if
+		// lower or higher
+		// - this would mean potentially read and writing the metedata after
+		// every file.
+		//
+		// 1) walk through renter files determining redundancy on files
+		// 2) compare redundancy against directory metadata redundancy and
+		// update as needed
+		//
+		// Option 2 - go through r.files
+		// Considerations
+		// - Would need to continue to store files in memory
+		//
+		// 1) iterate over r.files and build needed maps to check redundancy
+		// 2) Update map of redundancies then update directory metadata
+
 		r.managedBuildChunkHeap(hosts)
 		r.uploadHeap.mu.Lock()
 		heapLen := r.uploadHeap.heap.Len()
