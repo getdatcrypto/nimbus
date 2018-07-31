@@ -214,8 +214,8 @@ func (r *Renter) createDir(siapath string) error {
 	return nil
 }
 
-// createDirMetadata makes sure there is a metadata file in each directory of
-// the renter and updates or creates one as needed
+// createDirMetadata makes sure there is a metadata file in the directory and
+// updates or creates one as needed
 func (r *Renter) createDirMetadata(path string) error {
 	fullPath := filepath.Join(path, SiaDirMetadata)
 	// Check if metadata file exists
