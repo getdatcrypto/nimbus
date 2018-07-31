@@ -39,6 +39,10 @@ var (
 	// ErrNonShareSuffix is an error when the suffix of a file does not match the defined share extension
 	ErrNonShareSuffix = errors.New("suffix of file must be " + ShareExtension)
 
+	dirMetadataHeader = persist.Metadata{
+		Header:  "Sia Directory Metadata",
+		Version: persistVersion,
+	}
 	settingsMetadata = persist.Metadata{
 		Header:  "Renter Persistence",
 		Version: persistVersion,
@@ -53,6 +57,12 @@ var (
 )
 
 type (
+	// dirMetadata contains the metadata information about a renter directory
+	dirMetadata struct {
+		LastUpdate    int64
+		MinRedundancy float64
+	}
+
 	// persist contains all of the persistent renter data.
 	persistence struct {
 		MaxDownloadSpeed int64
@@ -214,17 +224,28 @@ func createDirMetadata(path string) error {
 	}
 
 	// TODO: update to get actual min redundancy
-	data := struct {
-		LastUpdate    int64
-		MinRedundancy float64
-	}{time.Now().UnixNano(), float64(0)}
-
-	metadataHeader := persist.Metadata{
-		Header:  "Sia Directory Metadata",
-		Version: persistVersion,
+	data := dirMetadata{
+		LastUpdate:    time.Now().UnixNano(),
+		MinRedundancy: float64(0),
 	}
 
-	return persist.SaveJSON(metadataHeader, data, fullPath)
+	return persist.SaveJSON(dirMetadataHeader, data, fullPath)
+}
+
+// loadDirMetadata loads the directory metadata from disk
+func (r *Renter) loadDirMetadata(path string) (dirMetadata, error) {
+	var metadata dirMetadata
+	err := persist.LoadJSON(dirMetadataHeader, &metadata, filepath.Join(path, SiaDirMetadata))
+	if os.IsNotExist(err) {
+		if err = createDirMetadata(path); err != nil {
+			return metadata, err
+		}
+		return r.loadDirMetadata(path)
+	}
+	if err != nil {
+		return metadata, err
+	}
+	return metadata, nil
 }
 
 // saveFile saves a file to the renter directory.
