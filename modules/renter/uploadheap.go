@@ -237,6 +237,55 @@ func (r *Renter) buildUnfinishedChunks(f *siafile.SiaFile, hosts map[string]stru
 // managedBuildChunkHeap will iterate through all of the files in the renter and
 // construct a chunk heap.
 func (r *Renter) managedBuildChunkHeap(hosts map[string]struct{}) {
+	// TODO:
+	//
+	// - Update to look at directories to find lowest redundancy files to repair
+	// first
+	//
+	// - create a loadDirMetadata method to load the directory metadata read
+	// redundancy. put in renter/persist.go
+	//
+	// - create a minimumRedundancy method that does the recursive check to find
+	// the directory with the minimum redundancy
+	//
+	//
+	// ASSUMPTIONS:
+	//
+	// - Each directory has a metadata file that contains the minimum redundancy
+	// of the files within that directory and any sub directory
+	//
+	// - The metadata file will be considered to be the most up to date
+	// redundancy, or good enough that we don't need to double check the
+	// redundancy of the files
+	//
+	// -
+	//
+	//
+	// QUESTIONS
+	//
+	// - How to get files within current directory from Renter?  Files can be
+	// read from disk from the current directory but don't we need the
+	// *siafile.SiaFile from the Renter to perform any tasks?
+	//
+	// - steps 1 and 2 should be a method, should it return the directory that
+	// contains the lowest redundancy or should it return the files?  Does one
+	// make more sense than the other or will it depend on how it is
+	// implemented?
+
+	// STEPS
+	//
+	// 1) Read directory metadata, starting with top level
+	//
+	// 2) Check for subdirectories, check subdir metadata
+	//		a) If subdirectory has lower redundancy proceed into that subdirectory
+	//
+	//		b) If no subdirectory has lower redundancy, then lowest redudancy is
+	//		in the files in current directory
+	//
+	// 3) Add chunks from files to heap
+	//
+	// 4) Repeat steps 1-3
+
 	// Get all the files holding the readlock.
 	lockID := r.mu.RLock()
 	files := make([]*siafile.SiaFile, 0, len(r.files))
