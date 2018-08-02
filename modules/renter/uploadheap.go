@@ -410,6 +410,7 @@ func (r *Renter) managedUpdateRenterRedundancy() error {
 	// Build 2 maps that map every pubkey to its offline and goodForRenew
 	// status.
 	for _, pk := range pks {
+		// TODO: Why can't this code go into the f.HostPublicKeys() loop?
 		cu, ok := r.hostContractor.ContractUtility(pk)
 		if !ok {
 			continue
