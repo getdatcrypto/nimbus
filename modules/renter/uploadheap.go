@@ -238,62 +238,16 @@ func (r *Renter) buildUnfinishedChunks(f *siafile.SiaFile, hosts map[string]stru
 // managedBuildChunkHeap will iterate through all of the files in the renter and
 // construct a chunk heap.
 func (r *Renter) managedBuildChunkHeap(hosts map[string]struct{}) {
-	// TODO:
-	//
-	// - Update to look at directories to find lowest redundancy files to repair
-	// first
-	//
-	// - create a loadDirMetadata method to load the directory metadata read
-	// redundancy. put in renter/persist.go
-	//
-	// - create a minimumRedundancy method that does the recursive check to find
-	// the directory with the minimum redundancy
-	//
-	//
-	// ASSUMPTIONS:
-	//
-	// - Each directory has a metadata file that contains the minimum redundancy
-	// of the files within that directory and any sub directory
-	//
-	// - The metadata file will be considered to be the most up to date
-	// redundancy, or good enough that we don't need to double check the
-	// redundancy of the files
-	//
-	// -
-	//
-	//
-	// QUESTIONS
-	//
-	// - How to get files within current directory from Renter?  Files can be
-	// read from disk from the current directory but don't we need the
-	// *siafile.SiaFile from the Renter to perform any tasks?
-	//
-	// - steps 1 and 2 should be a method, should it return the directory that
-	// contains the lowest redundancy or should it return the files?  Does one
-	// make more sense than the other or will it depend on how it is
-	// implemented?
+	// Find directory with lowest redundancy
+	dir := r.findMinDirRedundancy()
 
-	// STEPS
-	//
-	// 1) Read directory metadata, starting with top level
-	//
-	// 2) Check for subdirectories, check subdir metadata
-	//		a) If subdirectory has lower redundancy proceed into that subdirectory
-	//
-	//		b) If no subdirectory has lower redundancy, then lowest redudancy is
-	//		in the files in current directory
-	//
-	// 3) Add chunks from files to heap
-	//
-	// 4) Repeat steps 1-3
+	// Get files from directory
+	siaFiles := r.readDirSiaFiles(dir)
 
-	// Get all the files holding the readlock.
-	lockID := r.mu.RLock()
-	files := make([]*siafile.SiaFile, 0, len(r.files))
-	for _, file := range r.files {
+	files := make([]*siafile.SiaFile, 0, len(siaFiles))
+	for _, file := range siaFiles {
 		files = append(files, file)
 	}
-	r.mu.RUnlock(lockID)
 
 	// Save host keys in map. We can't do that under the same lock since we
 	// need to call a public method on the file.
@@ -463,35 +417,12 @@ func (r *Renter) threadedUploadLoop() {
 		// TODO: After replacing the filesystem to resemble a tree, we'll be
 		// able to go through the filesystem piecewise instead of doing
 		// everything all at once.
-		//
-		// TODO: update directory metadata with current redundancies, Should
-		// call a method like `managedUpdateRedundancies`
-		//
-		// STEPS
-		// - in both options, could create a map of [directory string]redundancy
-		// to track the minimum redundancy for each directory then iterate over
-		// the map and update the redundancy of each directory
-		//
-		// Option 1 - Walk through renter Directory
-		// Considerations:
-		// - Would need to figure out how to best determine if the directory
-		// metadata needs to be replaced. How to know if the redundancy was
-		// updated in the current loop. Could check timestamp.  Replace if
-		// timestamp is not within the last 5 minutes, otherwise compare if
-		// lower or higher
-		// - this would mean potentially read and writing the metedata after
-		// every file.
-		//
-		// 1) walk through renter files determining redundancy on files
-		// 2) compare redundancy against directory metadata redundancy and
-		// update as needed
-		//
-		// Option 2 - go through r.files
-		// Considerations
-		// - Would need to continue to store files in memory
-		//
-		// 1) iterate over r.files and build needed maps to check redundancy
-		// 2) Update map of redundancies then update directory metadata
+
+		// Update renter redundancy, errors will be logged but won't cause a
+		// failure as this is only performance related
+		if err := r.managedUpdateRenterRedundancy(); err != nil {
+			r.log.Println("WARN: Error updating renter redundancy:", err)
+		}
 
 		r.managedBuildChunkHeap(hosts)
 		r.uploadHeap.mu.Lock()
