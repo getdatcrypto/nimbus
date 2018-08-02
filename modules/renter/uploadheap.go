@@ -385,16 +385,17 @@ func (r *Renter) managedRefreshHostsAndWorkers() map[string]struct{} {
 // redundancies could be broken out into it's own method.  It is used in
 // multiple places throughout the code I believe
 func (r *Renter) managedUpdateRenterRedundancy() error {
-	// TODO: To remove files from memory, update this code to read all files
-	// from disk
-	//
+	// Read files from disk
+	siaFiles, err := r.readSiaFiles()
+	if err != nil {
+		return err
+	}
+
 	// Get all the files holding the readlock.
-	lockID := r.mu.RLock()
-	files := make([]*siafile.SiaFile, 0, len(r.files))
-	for _, file := range r.files {
+	files := make([]*siafile.SiaFile, 0, len(siaFiles))
+	for _, file := range siaFiles {
 		files = append(files, file)
 	}
-	r.mu.RUnlock(lockID)
 
 	// Save host keys in map. We can't do that under the same lock since we
 	// need to call a public method on the file.
