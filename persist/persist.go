@@ -46,7 +46,9 @@ var (
 	// for saving and loading. There should never be a situation where the same
 	// file is being called twice from different threads, as the persist package
 	// has no way to tell what order they were intended to be called.
-	ActiveFiles   = make(map[string]struct{})
+	ActiveFiles = make(map[string]struct{})
+	// ActiveFilesMu allows ActiveFiles to be locked to prevent multiple threads
+	// accessing
 	ActiveFilesMu sync.Mutex
 )
 
