@@ -67,6 +67,53 @@ func TestHeapImplementation(t *testing.T) {
 	}
 }
 
+// TestMultipleStreams tests that when multiple files are streamed that the
+// stream cache handles the chunks appropriately
+func TestMultipleStreams(t *testing.T) {
+	// test building map with multiple files
+	// test pruning handle prunes the right chunks
+	//
+	if testing.Short() {
+		t.SkipNow()
+	}
+	// Initializing minimum required variables
+	cacheSize := 10
+	sc := newStreamCache(uint64(cacheSize))
+
+	// Fill Cache with two different files
+	files := []string{"file0", "file1"}
+	for i := 0; i < cacheSize/2; i++ {
+		sc.Add(files[0], strconv.Itoa(i), []byte{})
+		sc.Add(files[1], strconv.Itoa(i), []byte{})
+	}
+
+	// Confirm map and heap were built correctly
+	if cm, ok := sc.streamMap[files[0]]; !ok || len(cm.chunks) != cacheSize/2 {
+		t.Fatalf("Map not built correctly for %v\nok: %v\nchunks: %v, expected: %v", files[0], ok, len(cm.chunks), cacheSize/2)
+	}
+	if cm, ok := sc.streamMap[files[1]]; !ok || len(cm.chunks) != cacheSize/2 {
+		t.Fatalf("Map not built correctly for %v\nok: %v\nchunks: %v, expected: %v", files[1], ok, len(cm.chunks), cacheSize/2)
+	}
+	if len(sc.streamHeap) != cacheSize {
+
+	}
+
+	// Confirm numChunks counts the chunks correctly
+	chunks := sc.numChunks()
+	if chunks != cacheSize {
+		t.Fatalf("numChunks didn't count the correct number of chunks, expected %v got %v", cacheSize, chunks)
+	}
+
+	// Check pruning file cache
+	sc.pruneCache(files[0], uint64(cacheSize-2))
+	if cm, ok := sc.streamMap[files[0]]; !ok || len(cm.chunks) != cacheSize/2-2 {
+		t.Fatalf("Map not built correctly for %v\nok: %v\nchunks: %v, expected: %v", files[0], ok, len(cm.chunks), cacheSize/2-2)
+	}
+	if cm, ok := sc.streamMap[files[1]]; !ok || len(cm.chunks) != cacheSize/2 {
+		t.Fatalf("Map not built correctly for %v\nok: %v\nchunks: %v, expected: %v", files[1], ok, len(cm.chunks), cacheSize/2)
+	}
+}
+
 // TestPruneCache tests to make sure that pruneCache always prunes the cache
 // to the given size
 func TestPruneCache(t *testing.T) {
