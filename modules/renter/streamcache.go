@@ -108,7 +108,9 @@ func (sh *streamHeap) update(cd *chunkData, id string, data []byte, lastAccess t
 
 // removeOldest removes the oldest chunk from the chunkMap and returns it
 func (cm *chunkMap) removeOldest() *chunkData {
-	var oldest *chunkData
+	oldest := &chunkData{
+		lastAccess: time.Now(),
+	}
 	for _, chunk := range cm.chunks {
 		if chunk.lastAccess.Before(oldest.lastAccess) {
 			oldest = chunk
@@ -128,7 +130,9 @@ func (sc *streamCache) Add(file, cacheID string, data []byte) {
 	// Check if file has been added to map and make sure chuck has not already
 	// been added
 	if _, ok := sc.streamMap[file]; !ok {
-		sc.streamMap[file] = chunkMap{}
+		sc.streamMap[file] = chunkMap{
+			chunks: make(map[string]*chunkData),
+		}
 	}
 	if _, ok := sc.streamMap[file].chunks[cacheID]; ok {
 		return

@@ -79,37 +79,38 @@ func TestPruneCache(t *testing.T) {
 	// Fill Cache
 	// Purposefully trying to fill to a value larger than cacheSize to confirm
 	// cacheSize won't be exceeded
+	file := "test"
 	for i := 0; i < int(sc.cacheSize)+5; i++ {
-		sc.Add(strconv.Itoa(i), []byte{})
+		sc.Add(file, strconv.Itoa(i), []byte{})
 	}
 	// Confirm that the streamHeap didn't exceed the cacheSize
-	if len(sc.streamHeap) != int(sc.cacheSize) || len(sc.streamMap) != len(sc.streamHeap) {
+	if len(sc.streamHeap) != int(sc.cacheSize) || sc.numChunks() != len(sc.streamHeap) {
 		t.Error("Cache is not equal to the cacheSize")
 	}
 
 	// Prune the cache down to 2
-	sc.pruneCache(2)
+	sc.pruneCache(file, 2)
 
 	// Confirm that the length of streamHeap was reduced to 2
-	if len(sc.streamHeap) != 2 || len(sc.streamMap) != 2 {
+	if len(sc.streamHeap) != 2 || sc.numChunks() != 2 {
 		t.Error("Cache was not pruned")
 	}
 
 	// Confirm calling pruneCache on a value larger than
 	// the cache size doesn't change the cache
-	sc.pruneCache(20)
-	if len(sc.streamHeap) != 2 || len(sc.streamMap) != 2 {
+	sc.pruneCache(file, 20)
+	if len(sc.streamHeap) != 2 || sc.numChunks() != 2 {
 		t.Error("Cache size was changed by pruning to larger value")
 	}
 
 	// Confirm the same chunk won't be added if already added
-	sc.pruneCache(0)
+	sc.pruneCache(file, 0)
 	id := "test"
 	for i := 0; i < 5; i++ {
-		sc.Add(id, []byte{})
+		sc.Add(file, id, []byte{})
 	}
-	if len(sc.streamHeap) != 1 || len(sc.streamMap) != 1 {
-		t.Fatalf("Chunk added more the once.\nHeap length: %v\nMap length: %v\n", len(sc.streamHeap), len(sc.streamMap))
+	if len(sc.streamHeap) != 1 || sc.numChunks() != 1 {
+		t.Fatalf("Chunk added more the once.\nHeap length: %v\nMap length: %v\n", len(sc.streamHeap), sc.numChunks())
 	}
 }
 
@@ -128,26 +129,27 @@ func TestStreamCache(t *testing.T) {
 	// Fill Cache
 	// Purposefully trying to fill to a value larger than cacheSize to confirm Add()
 	// keeps pruning cache
+	file := "test"
 	for i := 0; i < int(sc.cacheSize)+5; i++ {
-		sc.Add(strconv.Itoa(i), []byte{})
+		sc.Add(file, strconv.Itoa(i), []byte{})
 	}
 	// Confirm that the streamHeap didn't exceed the cacheSize
-	if len(sc.streamHeap) != int(sc.cacheSize) || len(sc.streamMap) != len(sc.streamHeap) {
+	if len(sc.streamHeap) != int(sc.cacheSize) || sc.numChunks() != len(sc.streamHeap) {
 		t.Error("Cache is not equal to the cacheSize")
 	}
 
-	// Reduce cacheSize and call Add() to confirm cache is pruned
+	// Reduce cacheSize and call Add to confirm cache is pruned
 	sc.cacheSize = 2
-	sc.Add("", []byte{})
-	if len(sc.streamHeap) != int(sc.cacheSize) || len(sc.streamMap) != len(sc.streamHeap) {
+	sc.Add(file, "", []byte{})
+	if len(sc.streamHeap) != int(sc.cacheSize) || sc.numChunks() != len(sc.streamHeap) {
 		t.Error("Cache is not equal to the cacheSize")
 	}
 
 	// Add new chunk with known staticCacheID
-	sc.Add("chunk1", []byte{}) // "chunk1" should be at the bottom of the Heap
+	sc.Add(file, "chunk1", []byte{}) // "chunk1" should be at the bottom of the Heap
 
 	// Confirm chunk is in the Map and at the bottom of the Heap
-	cd, ok := sc.streamMap["chunk1"]
+	cd, ok := sc.streamMap[file].chunks["chunk1"]
 	if !ok {
 		t.Error("The chunk1 was not added to the Map")
 	}
@@ -164,7 +166,7 @@ func TestStreamCache(t *testing.T) {
 	}
 
 	// Add additional chunk to force deletion of a chunk
-	sc.Add("chunk2", []byte{})
+	sc.Add(file, "chunk2", []byte{})
 
 	// check if chunk1 was removed from Map and Heap
 	if _, ok := sc.streamMap["chunk1"]; ok {
