@@ -345,7 +345,7 @@ func (r *Renter) managedUpdateRenterRedundancy() error {
 		return err
 	}
 
-	// Get all the files holding the readlock.
+	// Convert map of files to slice of files
 	files := make([]*siafile.SiaFile, 0, len(siaFiles))
 	for _, file := range siaFiles {
 		files = append(files, file)

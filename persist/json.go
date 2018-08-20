@@ -182,15 +182,15 @@ func LoadJSON(meta Metadata, object interface{}, filename string) error {
 
 	// Verify that no other thread is using this filename.
 	err := func() error {
-		ActiveFilesMu.Lock()
-		defer ActiveFilesMu.Unlock()
+		activeFilesMu.Lock()
+		defer activeFilesMu.Unlock()
 
-		_, exists := ActiveFiles[filename]
+		_, exists := activeFiles[filename]
 		if exists {
 			build.Critical(ErrFileInUse, filename)
 			return ErrFileInUse
 		}
-		ActiveFiles[filename] = struct{}{}
+		activeFiles[filename] = struct{}{}
 		return nil
 	}()
 	if err != nil {
@@ -198,9 +198,9 @@ func LoadJSON(meta Metadata, object interface{}, filename string) error {
 	}
 	// Release the lock at the end of the function.
 	defer func() {
-		ActiveFilesMu.Lock()
-		delete(ActiveFiles, filename)
-		ActiveFilesMu.Unlock()
+		activeFilesMu.Lock()
+		delete(activeFiles, filename)
+		activeFilesMu.Unlock()
 	}()
 
 	// Try opening the primary file.
@@ -233,15 +233,15 @@ func SaveJSON(meta Metadata, object interface{}, filename string) error {
 
 	// Verify that no other thread is using this filename.
 	err := func() error {
-		ActiveFilesMu.Lock()
-		defer ActiveFilesMu.Unlock()
+		activeFilesMu.Lock()
+		defer activeFilesMu.Unlock()
 
-		_, exists := ActiveFiles[filename]
+		_, exists := activeFiles[filename]
 		if exists {
 			build.Critical(ErrFileInUse, filename)
 			return ErrFileInUse
 		}
-		ActiveFiles[filename] = struct{}{}
+		activeFiles[filename] = struct{}{}
 		return nil
 	}()
 	if err != nil {
@@ -249,9 +249,9 @@ func SaveJSON(meta Metadata, object interface{}, filename string) error {
 	}
 	// Release the lock at the end of the function.
 	defer func() {
-		ActiveFilesMu.Lock()
-		delete(ActiveFiles, filename)
-		ActiveFilesMu.Unlock()
+		activeFilesMu.Lock()
+		delete(activeFiles, filename)
+		activeFilesMu.Unlock()
 	}()
 
 	// Write the metadata to the buffer.
