@@ -684,7 +684,7 @@ func TestRenterInterrupt(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
-	t.Parallel()
+	// t.Parallel()
 
 	// Create a group for the subtests
 	groupParams := siatest.GroupParams{

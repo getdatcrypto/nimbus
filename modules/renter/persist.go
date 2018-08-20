@@ -234,8 +234,14 @@ func (r *Renter) findMinDirRedundancy() string {
 	dir := r.persistDir
 	redundancy := float64(100)
 	_ = filepath.Walk(r.persistDir, func(path string, info os.FileInfo, err error) error {
-		// Skip files.
-		if !info.IsDir() {
+		// Skip files
+		//
+		// TODO: Currently skipping contracts directory until renter files are
+		// not stored in the top level directory of the renter.  Then the
+		// starting point will be the renter's files directory and not
+		// r.persistDir
+		contractsDir := filepath.Join(r.persistDir, "contracts")
+		if !info.IsDir() || path == contractsDir {
 			return nil
 		}
 
@@ -379,31 +385,8 @@ func (r *Renter) readDirSiaFiles(path string) map[string]*siafile.SiaFile {
 
 	for _, fi := range finfos {
 		filename := filepath.Join(path, fi.Name())
-		// Verify that no other thread is using this filename.
-		err = func() error {
-			persist.ActiveFilesMu.Lock()
-			defer persist.ActiveFilesMu.Unlock()
-
-			_, exists := persist.ActiveFiles[filename]
-			if exists {
-				return persist.ErrFileInUse
-			}
-			persist.ActiveFiles[filename] = struct{}{}
-			return nil
-		}()
-		if err != nil {
-			r.log.Println("WARN: file or folder already being accessed:", err)
-			continue
-		}
-		defer func() {
-			// Release the lock at the end of the function.
-			persist.ActiveFilesMu.Lock()
-			delete(persist.ActiveFiles, filename)
-			persist.ActiveFilesMu.Unlock()
-		}()
-
 		// Open the file.
-		file, err := os.Open(path)
+		file, err := os.Open(filename)
 		defer file.Close()
 		if err != nil {
 			r.log.Println("ERROR: could not open .sia file:", err)
@@ -430,28 +413,6 @@ func (r *Renter) readSiaFiles() (map[string]*siafile.SiaFile, error) {
 	// Recursively read all files found in renter directory. Errors
 	// encountered during loading are logged, but are not considered fatal.
 	err := filepath.Walk(r.persistDir, func(path string, info os.FileInfo, err error) error {
-		// Verify that no other thread is using this filename.
-		err = func() error {
-			persist.ActiveFilesMu.Lock()
-			defer persist.ActiveFilesMu.Unlock()
-
-			_, exists := persist.ActiveFiles[path]
-			if exists {
-				return persist.ErrFileInUse
-			}
-			persist.ActiveFiles[path] = struct{}{}
-			return nil
-		}()
-		if err != nil {
-			r.log.Println("WARN: file or folder already being accessed:", err)
-			return nil
-		}
-		// Release the lock at the end of the function.
-		defer func() {
-			persist.ActiveFilesMu.Lock()
-			delete(persist.ActiveFiles, path)
-			persist.ActiveFilesMu.Unlock()
-		}()
 		// This error is non-nil if filepath.Walk couldn't stat a file or
 		// folder.
 		if err != nil {
@@ -644,6 +605,7 @@ func (r *Renter) loadSharedFiles(reader io.Reader) ([]string, error) {
 
 	// Read each file.
 	files := make([]*file, numFiles)
+	rlock := r.mu.RLock()
 	for i := range files {
 		files[i] = new(file)
 		err := dec.Decode(files[i])
@@ -663,9 +625,12 @@ func (r *Renter) loadSharedFiles(reader io.Reader) ([]string, error) {
 			files[i].name = origName + "_" + strconv.Itoa(dupCount)
 		}
 	}
+	r.mu.RUnlock(rlock)
 
 	// Add files to renter.
 	names := make([]string, numFiles)
+	lock := r.mu.Lock()
+	defer r.mu.Unlock(lock)
 	for i, f := range files {
 		r.files[f.name] = r.fileToSiaFile(f, r.persist.Tracking[f.name].RepairPath)
 		names[i] = f.name
