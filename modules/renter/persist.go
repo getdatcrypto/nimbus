@@ -6,7 +6,6 @@ import (
 	"encoding/base64"
 	"errors"
 	"io"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -365,90 +364,6 @@ func (r *Renter) loadSiaFiles() error {
 		}
 		return nil
 	})
-}
-
-// readDirSiaFiles reads the sia files in the directory and returns them as a
-// map of sia files
-func (r *Renter) readDirSiaFiles(path string) map[string]*siafile.SiaFile {
-	// This method will log errors and continue to try and return as many files
-	// as possible
-
-	// Make map for sia files
-	siaFiles := make(map[string]*siafile.SiaFile)
-
-	// Read directory
-	finfos, err := ioutil.ReadDir(path)
-	if err != nil {
-		r.log.Println("WARN: Error in reading files in least redundant directory:", err)
-		return siaFiles
-	}
-
-	for _, fi := range finfos {
-		filename := filepath.Join(path, fi.Name())
-		// Open the file.
-		file, err := os.Open(filename)
-		defer file.Close()
-		if err != nil {
-			r.log.Println("ERROR: could not open .sia file:", err)
-
-		}
-
-		// Read the file contents and add to map.
-		files, err := r.readSharedFiles(file)
-		if err != nil {
-			r.log.Println("ERROR: could not read .sia file:", err)
-			continue
-		}
-		for k, v := range files {
-			siaFiles[k] = v
-		}
-
-	}
-	return siaFiles
-}
-
-// readSiaFiles reads all the sia files in the renter and returns a map of sia files
-func (r *Renter) readSiaFiles() (map[string]*siafile.SiaFile, error) {
-	siaFiles := make(map[string]*siafile.SiaFile)
-	// Recursively read all files found in renter directory. Errors
-	// encountered during loading are logged, but are not considered fatal.
-	err := filepath.Walk(r.persistDir, func(path string, info os.FileInfo, err error) error {
-		// This error is non-nil if filepath.Walk couldn't stat a file or
-		// folder.
-		if err != nil {
-			r.log.Println("WARN: could not stat file or folder during walk:", err)
-			return nil
-		}
-
-		// Skip folders and non-sia files.
-		if info.IsDir() || filepath.Ext(path) != ShareExtension {
-			return nil
-		}
-
-		// Open the file.
-		file, err := os.Open(path)
-		if err != nil {
-			r.log.Println("ERROR: could not open .sia file:", err)
-			return nil
-		}
-		defer file.Close()
-
-		// Read the file contents and add to map.
-		files, err := r.readSharedFiles(file)
-		if err != nil {
-			r.log.Println("ERROR: could not read .sia file:", err)
-			return nil
-		}
-		for k, v := range files {
-			siaFiles[k] = v
-		}
-		return nil
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	return siaFiles, nil
 }
 
 // load fetches the saved renter data from disk.

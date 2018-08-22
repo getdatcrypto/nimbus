@@ -233,6 +233,7 @@ func testDirectories(t *testing.T, tg *siatest.TestGroup) {
 	r := tg.Renters()[0]
 
 	// Test Directory endpoint for creating empty directory
+	fmt.Printf("\n***UploadNewDirectory***\n\n")
 	rd, err := r.UploadNewDirectory(0, 0, 0)
 	if err != nil {
 		t.Fatal(err)
@@ -259,6 +260,8 @@ func testDirectories(t *testing.T, tg *siatest.TestGroup) {
 
 	// Check new directory
 	check = 0
+	fmt.Printf("\n***ReadDir***\n")
+	fmt.Printf("rd.SiaPath: %v \n\n", rd.SiaPath())
 	fileInfos, err = ioutil.ReadDir(filepath.Join(rd.SiaPath(), r.RenterDir()))
 	if err != nil {
 		t.Fatal("Unable to read uploaded directory:", err)
@@ -274,7 +277,9 @@ func testDirectories(t *testing.T, tg *siatest.TestGroup) {
 
 	// Check uploading file to new subdirectory
 	size := 100 + siatest.Fuzz()
+	fmt.Printf("\n***MakeDir***\n")
 	path := filepath.Join(r.UploadDir().Path(), "subDir1/subDir2/subDir3")
+	fmt.Printf("path: %v\n\n", path)
 	if err := os.MkdirAll(path, 0777); err != nil {
 		t.Fatal(err)
 	}

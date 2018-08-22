@@ -175,7 +175,6 @@ type trackedFile struct {
 // the same way that we split of the memoryManager entirely.
 type Renter struct {
 	// File management.
-	//
 	files map[string]*siafile.SiaFile
 
 	// Download management. The heap has a separate mutex because it is always

@@ -196,13 +196,16 @@ func (tn *TestNode) UploadNewDirectory(files, dirs, levels uint) (*RemoteDir, er
 	}
 
 	// Upload Directory
+	fmt.Printf("\n***Local Direcotry Path: %v \n\n", ld.path)
 	siapath := tn.LocalDirSiaPath(ld)
+	fmt.Printf("\n***SiaPath: %v \n\n", siapath)
 	err = tn.RenterCreateDirPost(siapath)
 	if err != nil {
 		return nil, errors.AddContext(err, "failed to upload directory")
 	}
 
 	// Create remote directory object
+	fmt.Printf("\n***tn.RenterDir: %v \n\n", tn.RenterDir())
 	rd := &RemoteDir{
 		siapath: siapath,
 	}
