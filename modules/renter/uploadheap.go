@@ -18,7 +18,6 @@ package renter
 
 import (
 	"container/heap"
-	"fmt"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -341,12 +340,12 @@ func (r *Renter) managedRefreshHostsAndWorkers() map[string]struct{} {
 // from disk but that work should be included with the larger tasks of moving
 // files out of memory all together.
 func (r *Renter) managedUpdateRenterRedundancy() error {
-	fmt.Println("managedUpdateRenterRedundancy")
+	// fmt.Println("managedUpdateRenterRedundancy")
 	// Create slice of files while holding read lock
 	files := make([]*siafile.SiaFile, 0, len(r.files))
 	lockID := r.mu.RLock()
-	for name, file := range r.files {
-		fmt.Println("File name", name)
+	for _, file := range r.files {
+		// fmt.Println("File name", name)
 		files = append(files, file)
 	}
 	r.mu.RUnlock(lockID)
@@ -398,8 +397,8 @@ func (r *Renter) managedUpdateRenterRedundancy() error {
 // from disk but that work should be included with the larger tasks of moving
 // files out of memory all together.
 func (r *Renter) managedReadDirFiles(path string) []*siafile.SiaFile {
-	fmt.Println("managedReadDirFiles")
-	fmt.Println("path:", path)
+	// fmt.Println("managedReadDirFiles")
+	// fmt.Println("path:", path)
 	// Read directory
 	finfos, err := ioutil.ReadDir(path)
 	files := make([]*siafile.SiaFile, 0, len(finfos))
@@ -410,14 +409,13 @@ func (r *Renter) managedReadDirFiles(path string) []*siafile.SiaFile {
 
 	for _, fi := range finfos {
 		fullpath := filepath.Join(path, fi.Name())
-		fmt.Println("fullpath:", fullpath)
-		filename := strings.TrimPrefix(fullpath, r.persistDir)
-		fmt.Println("filename:", filename)
+		// fmt.Println("fullpath:", fullpath)
+		filename := strings.TrimPrefix(fullpath, r.persistDir+"/")
+		// fmt.Println("filename:", filename)
 		// Read files from Renter with read lock
 		lockID := r.mu.RLock()
 		file, exist := r.files[filename]
 		if !exist {
-			r.log.Println("ERROR: file doest not exist in renter files:", filename)
 			r.mu.RUnlock(lockID)
 			continue
 		}
