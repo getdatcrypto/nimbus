@@ -62,6 +62,7 @@ type (
 	dirMetadata struct {
 		LastUpdate    int64
 		MinRedundancy float64
+		NumFiles      int // Exclusive of metadata files
 	}
 
 	// persist contains all of the persistent renter data.
@@ -214,22 +215,21 @@ func (r *Renter) createDir(siapath string) error {
 	return nil
 }
 
-// createDirMetadata makes sure there is a metadata file in the directory and
-// updates or creates one as needed
+// createDirMetadata makes sure there is a metadata file in the directory
+// creates one as needed
 func (r *Renter) createDirMetadata(path string) error {
 	fullPath := filepath.Join(path, SiaDirMetadata)
 	// Check if metadata file exists
 	if _, err := os.Stat(fullPath); err == nil {
-		// TODO: update metadata file
 		return nil
 	}
 
-	// TODO: update to get actual min redundancy
+	// Initialize metadata
 	data := dirMetadata{
 		LastUpdate:    time.Now().UnixNano(),
 		MinRedundancy: float64(0),
+		NumFiles:      0,
 	}
-
 	return r.saveDirMetadata(path, data)
 }
 
@@ -255,6 +255,11 @@ func (r *Renter) findMinDirRedundancy() string {
 		metadata, err := r.loadDirMetadata(path)
 		if err != nil {
 			r.log.Println("WARN: Could not load directory metadata:", err)
+			return nil
+		}
+
+		// Skip empty directories
+		if metadata.NumFiles == 0 {
 			return nil
 		}
 
@@ -292,9 +297,22 @@ func (r *Renter) saveDirMetadata(path string, metadata dirMetadata) error {
 // updateDirMetadata updates all the renter's directories' metadata
 func (r *Renter) updateDirMetadata(redundancies map[string]float64) error {
 	for path, redundancy := range redundancies {
-		err := r.saveDirMetadata(path, dirMetadata{
+		// Update number of files
+		files, err := ioutil.ReadDir(path)
+		if err != nil {
+			return err
+		}
+		numFiles := 0
+		for _, f := range files {
+			if filepath.Ext(f.Name()) == ShareExtension {
+				numFiles++
+				continue
+			}
+		}
+		err = r.saveDirMetadata(path, dirMetadata{
 			LastUpdate:    time.Now().UnixNano(),
 			MinRedundancy: redundancy,
+			NumFiles:      numFiles,
 		})
 		if err != nil {
 			return err
