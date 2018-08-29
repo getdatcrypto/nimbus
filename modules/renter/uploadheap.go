@@ -18,10 +18,8 @@ package renter
 
 import (
 	"container/heap"
-	"io/ioutil"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 	"time"
 
@@ -244,7 +242,16 @@ func (r *Renter) managedBuildChunkHeap(hosts map[string]struct{}) {
 	dir := r.findMinDirRedundancy()
 
 	// Get files from directory
-	files := r.managedReadDirFiles(dir)
+	// Get all the files holding the readlock.
+	lockID := r.mu.RLock()
+	files := make([]*siafile.SiaFile, 0, len(r.files))
+	for filename, file := range r.files {
+		fullpath := filepath.Join(r.persistDir, filename)
+		if filepath.Dir(fullpath) == dir {
+			files = append(files, file)
+		}
+	}
+	r.mu.RUnlock(lockID)
 
 	// Save host keys in map. We can't do that under the same lock since we
 	// need to call a public method on the file.
@@ -329,8 +336,8 @@ func (r *Renter) managedRefreshHostsAndWorkers() map[string]struct{} {
 	return hosts
 }
 
-// managedUpdateRenterRedundancy iterates over the renter's files and updates the
-// directories with the minimum redundancies
+// managedUpdateRenterRedundancy iterates over the renter's files and updates
+// the directories with the minimum redundancies
 //
 // TODO: the code of looping over files and building maps to then get the
 // redundancies could be broken out into it's own method.  It is used in
@@ -340,12 +347,10 @@ func (r *Renter) managedRefreshHostsAndWorkers() map[string]struct{} {
 // from disk but that work should be included with the larger tasks of moving
 // files out of memory all together.
 func (r *Renter) managedUpdateRenterRedundancy() error {
-	// fmt.Println("managedUpdateRenterRedundancy")
 	// Create slice of files while holding read lock
 	files := make([]*siafile.SiaFile, 0, len(r.files))
 	lockID := r.mu.RLock()
 	for _, file := range r.files {
-		// fmt.Println("File name", name)
 		files = append(files, file)
 	}
 	r.mu.RUnlock(lockID)
@@ -364,7 +369,6 @@ func (r *Renter) managedUpdateRenterRedundancy() error {
 	// Build 2 maps that map every pubkey to its offline and goodForRenew
 	// status.
 	for _, pk := range pks {
-		// TODO: Why can't this code go into the f.HostPublicKeys() loop?
 		cu, ok := r.hostContractor.ContractUtility(pk)
 		if !ok {
 			continue
@@ -389,40 +393,6 @@ func (r *Renter) managedUpdateRenterRedundancy() error {
 
 	// Update directory metadatas
 	return r.updateDirMetadata(redundancies)
-}
-
-// managedReadDirFiles returns the files in the directory from renter files
-//
-// TODO: Currently reading files from memory, this can be updated to read files
-// from disk but that work should be included with the larger tasks of moving
-// files out of memory all together.
-func (r *Renter) managedReadDirFiles(path string) []*siafile.SiaFile {
-	// fmt.Println("managedReadDirFiles")
-	// fmt.Println("path:", path)
-	// Read directory
-	finfos, err := ioutil.ReadDir(path)
-	files := make([]*siafile.SiaFile, 0, len(finfos))
-	if err != nil {
-		r.log.Println("WARN: Error in reading files in least redundant directory:", err)
-		return files
-	}
-
-	for _, fi := range finfos {
-		fullpath := filepath.Join(path, fi.Name())
-		// fmt.Println("fullpath:", fullpath)
-		filename := strings.TrimPrefix(fullpath, r.persistDir+"/")
-		// fmt.Println("filename:", filename)
-		// Read files from Renter with read lock
-		lockID := r.mu.RLock()
-		file, exist := r.files[filename]
-		if !exist {
-			r.mu.RUnlock(lockID)
-			continue
-		}
-		r.mu.RUnlock(lockID)
-		files = append(files, file)
-	}
-	return files
 }
 
 // threadedUploadLoop is a background thread that checks on the health of files,
