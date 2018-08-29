@@ -417,50 +417,6 @@ func (r *Renter) readDirSiaFiles(path string) map[string]*siafile.SiaFile {
 	return siaFiles
 }
 
-// readSiaFiles reads all the sia files in the renter and returns a map of sia files
-func (r *Renter) readSiaFiles() (map[string]*siafile.SiaFile, error) {
-	siaFiles := make(map[string]*siafile.SiaFile)
-	// Recursively read all files found in renter directory. Errors
-	// encountered during loading are logged, but are not considered fatal.
-	err := filepath.Walk(r.persistDir, func(path string, info os.FileInfo, err error) error {
-		// This error is non-nil if filepath.Walk couldn't stat a file or
-		// folder.
-		if err != nil {
-			r.log.Println("WARN: could not stat file or folder during walk:", err)
-			return nil
-		}
-
-		// Skip folders and non-sia files.
-		if info.IsDir() || filepath.Ext(path) != ShareExtension {
-			return nil
-		}
-
-		// Open the file.
-		file, err := os.Open(path)
-		if err != nil {
-			r.log.Println("ERROR: could not open .sia file:", err)
-			return nil
-		}
-		defer file.Close()
-
-		// Read the file contents and add to map.
-		files, err := r.readSharedFiles(file)
-		if err != nil {
-			r.log.Println("ERROR: could not read .sia file:", err)
-			return nil
-		}
-		for k, v := range files {
-			siaFiles[k] = v
-		}
-		return nil
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	return siaFiles, nil
-}
-
 // load fetches the saved renter data from disk.
 func (r *Renter) loadSettings() error {
 	r.persist = persistence{

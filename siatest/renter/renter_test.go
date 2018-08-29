@@ -233,6 +233,7 @@ func testDirectories(t *testing.T, tg *siatest.TestGroup) {
 	r := tg.Renters()[0]
 
 	// Test Directory endpoint for creating empty directory
+	fmt.Printf("\n***UploadNewDirectory***\n\n")
 	rd, err := r.UploadNewDirectory(0, 0, 0)
 	if err != nil {
 		t.Fatal(err)

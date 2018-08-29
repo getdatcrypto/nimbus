@@ -42,7 +42,7 @@ var (
 )
 
 var (
-	// activeFiles is a map tracking which filenames are currently being used
+	// ActiveFiles is a map tracking which filenames are currently being used
 	// for saving and loading. There should never be a situation where the same
 	// file is being called twice from different threads, as the persist package
 	// has no way to tell what order they were intended to be called.
