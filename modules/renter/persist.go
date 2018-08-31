@@ -303,6 +303,11 @@ func (r *Renter) findMinDirRedundancy() (string, error) {
 			return nil
 		}
 
+		// Skip empty directories
+		if metadata.NumFiles == 0 {
+			return nil
+		}
+
 		// Check redundancy
 		if md.MinRedundancy > redundancy {
 			return nil
