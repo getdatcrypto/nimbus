@@ -241,73 +241,39 @@ func testDirectories(t *testing.T, tg *siatest.TestGroup) {
 	// Check for metadata files, Directory should have been uploaded in the top
 	// level of the renter so there should be a metadata file for /renter and
 	// for the newly uploaded directory
-	//
+	metadata := ".siadir"
 	// Check /renter level
-	check := 0
-	fileInfos, err := ioutil.ReadDir(r.RenterDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, f := range fileInfos {
-		if !f.IsDir() && f.Name() == ".siadir" {
-			check++
-		}
-	}
-	if check != 1 {
-		t.Fatalf("Did not find expected number of .siadir metadata files, found %v expected 1", check)
-	}
+	assertFileExists(r.RenterDir(), metadata, t)
 
 	// Check new directory
-	check = 0
-	fileInfos, err = ioutil.ReadDir(filepath.Join(r.RenterDir(), rd.SiaPath()))
-	if err != nil {
-		t.Fatal("Unable to read uploaded directory:", err)
-	}
-	for _, f := range fileInfos {
-		if !f.IsDir() && f.Name() == ".siadir" {
-			check++
-		}
-	}
-	if check != 1 {
-		t.Fatalf("Did not find expected number of .siadir metadata files, found %v expected 1", check)
-	}
+	assertFileExists(filepath.Join(r.RenterDir(), rd.SiaPath()), metadata, t)
 
 	// Check uploading file to new subdirectory
+	// Create local file
 	size := 100 + siatest.Fuzz()
 	ud := r.UploadDir()
 	ld, err := ud.CreateDir("subDir1/subDir2/subDir3")
 	if err != nil {
 		t.Fatal(err)
 	}
-	lf, err := siatest.NewLocalFile(size, ld.Path())
+	lf, err := ld.NewFile(size)
 	if err != nil {
 		t.Fatal(err)
 	}
 
+	// Upload file
 	dataPieces := uint64(1)
 	parityPieces := uint64(1)
-	rf, err := r.Upload(lf, dataPieces, parityPieces)
+	_, err = r.Upload(lf, dataPieces, parityPieces)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Check for metadata files, uploading file into subdirectory should have
 	// created directories and directory metadata files up through renter
-	path := filepath.Dir(filepath.Join(r.RenterDir(), rf.SiaPath()))
-	for path != r.RenterDir() {
-		check = 0
-		fileInfos, err = ioutil.ReadDir(path)
-		if err != nil {
-			t.Fatal("Unable to read uploaded directory:", err)
-		}
-		for _, f := range fileInfos {
-			if !f.IsDir() && f.Name() == ".siadir" {
-				check++
-			}
-		}
-		if check != 1 {
-			t.Fatalf("Did not find expected number of .siadir metadata files, found %v expected 1", check)
-		}
+	path := filepath.Join(ud.Path(), "subDir1/subDir2/subDir3")
+	for path != filepath.Dir(r.RenterDir()) {
+		assertFileExists(path, metadata, t)
 		path = filepath.Dir(path)
 	}
 }
@@ -717,6 +683,7 @@ func TestRenterInterrupt(t *testing.T) {
 		name string
 		test func(*testing.T, *siatest.TestGroup)
 	}{
+		{"TestContractInterruptedSaveToDiskAfterDeletion", testContractInterruptedSaveToDiskAfterDeletion},
 		{"TestDownloadInterruptedAfterSendingRevision", testDownloadInterruptedAfterSendingRevision},
 		{"TestDownloadInterruptedBeforeSendingRevision", testDownloadInterruptedBeforeSendingRevision},
 		{"TestUploadInterruptedAfterSendingRevision", testUploadInterruptedAfterSendingRevision},
@@ -728,6 +695,13 @@ func TestRenterInterrupt(t *testing.T) {
 			subtest.test(t, tg)
 		})
 	}
+}
+
+// testContractInterruptedSaveToDiskAfterDeletion runs testDownloadInterrupted with
+// a dependency that interrupts the download after sending the signed revision
+// to the host.
+func testContractInterruptedSaveToDiskAfterDeletion(t *testing.T, tg *siatest.TestGroup) {
+	testContractInterrupted(t, tg, newDependencyInterruptContractSaveToDiskAfterDeletion())
 }
 
 // testDownloadInterruptedAfterSendingRevision runs testDownloadInterrupted with
@@ -756,6 +730,97 @@ func testUploadInterruptedAfterSendingRevision(t *testing.T, tg *siatest.TestGro
 // the host.
 func testUploadInterruptedBeforeSendingRevision(t *testing.T, tg *siatest.TestGroup) {
 	testUploadInterrupted(t, tg, newDependencyInterruptUploadBeforeSendingRevision())
+}
+
+// testContractInterrupted interrupts a download using the provided dependencies.
+func testContractInterrupted(t *testing.T, tg *siatest.TestGroup, deps *siatest.DependencyInterruptOnceOnKeyword) {
+	// Add Renter
+	testDir := renterTestDir(t.Name())
+	renterTemplate := node.Renter(testDir + "/renter")
+	renterTemplate.ContractorDeps = deps
+	renterTemplate.Allowance = siatest.DefaultAllowance
+	renterTemplate.Allowance.Period = 100
+	renterTemplate.Allowance.RenewWindow = 75
+	nodes, err := tg.AddNodes(renterTemplate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	renter := nodes[0]
+
+	// Call fail on the dependency every 10 ms.
+	cancel := make(chan struct{})
+	wg := new(sync.WaitGroup)
+	wg.Add(1)
+	go func() {
+		for {
+			// Cause the next download to fail.
+			deps.Fail()
+			select {
+			case <-cancel:
+				wg.Done()
+				return
+			case <-time.After(10 * time.Millisecond):
+			}
+		}
+	}()
+
+	// Renew contracts.
+	if err = renewContractsByRenewWindow(renter, tg); err != nil {
+		t.Fatal(err)
+	}
+
+	// Disrupt statement should prevent inactive contracts from being created
+	err = build.Retry(50, 100*time.Millisecond, func() error {
+		rc, err := renter.RenterInactiveContractsGet()
+		if err != nil {
+			return err
+		}
+		if len(rc.InactiveContracts) != 0 {
+			return fmt.Errorf("Incorrect number of inactive contracts: have %v expected 0", len(rc.InactiveContracts))
+		}
+		if len(rc.ActiveContracts) != len(tg.Hosts())*2 {
+			return fmt.Errorf("Incorrect number of active contracts: have %v expected %v", len(rc.ActiveContracts), len(tg.Hosts())*2)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// By mining blocks to trigger threadContractMaintenance,
+	// managedCheckForDuplicates should move renewed contracts to inactive even
+	// though disrupt statement is still interrtupting renew code
+	m := tg.Miners()[0]
+	if err = m.MineBlock(); err != nil {
+		t.Fatal(err)
+	}
+	if err = tg.Sync(); err != nil {
+		t.Fatal(err)
+	}
+	err = build.Retry(70, 100*time.Millisecond, func() error {
+		rc, err := renter.RenterInactiveContractsGet()
+		if err != nil {
+			return err
+		}
+		if len(rc.InactiveContracts) != len(tg.Hosts()) {
+			return fmt.Errorf("Incorrect number of inactive contracts: have %v expected %v", len(rc.InactiveContracts), len(tg.Hosts()))
+		}
+		if len(rc.ActiveContracts) != len(tg.Hosts()) {
+			return fmt.Errorf("Incorrect number of active contracts: have %v expected %v", len(rc.ActiveContracts), len(tg.Hosts()))
+		}
+		if err = m.MineBlock(); err != nil {
+			return err
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Stop calling fail on the dependency.
+	close(cancel)
+	wg.Wait()
+	deps.Disable()
 }
 
 // testDownloadInterrupted interrupts a download using the provided dependencies.
@@ -2480,6 +2545,24 @@ func TestZeroByteFile(t *testing.T) {
 }
 
 // The following are helper functions for the renter tests
+
+// assertFileExists is a helper function to confirm that a file exists in a
+// directory
+func assertFileExists(dir, filename string, t *testing.T) {
+	check := 0
+	fileInfos, err := ioutil.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range fileInfos {
+		if !f.IsDir() && f.Name() == filename {
+			check++
+		}
+	}
+	if check != 1 {
+		t.Fatalf("Did not find %v file, found %v expected 1", filename, check)
+	}
+}
 
 // checkBalanceVsSpending checks the renters confirmed siacoin balance in their
 // wallet against their reported spending
