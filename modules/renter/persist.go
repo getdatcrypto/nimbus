@@ -7,6 +7,7 @@ import (
 	"errors"
 	"io"
 	"io/ioutil"
+	"math"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -55,14 +56,33 @@ var (
 	// Persist Version Numbers
 	persistVersion040 = "0.4"
 	persistVersion133 = "1.3.3"
+
+	// timeBetweenRepair is the amount of time to wait before trying to repair a
+	// file again.  This is to prevent one bad file being repaired continuosly
+	// while other files degrade
+	//
+	// TODO - threadedUpload loop only runs every 15mins, unless renter uploads
+	// file. How should this impact the value of timeBetweenRepair
+	timeBetweenRepair = func() int64 {
+		switch build.Release {
+		case "dev":
+			return int64(time.Minute * 5)
+		case "standard":
+			return int64(time.Hour * 2)
+		case "testing":
+			return int64(time.Second * 5)
+		}
+		panic("undefined timeBetweenRepair")
+	}()
 )
 
 type (
 	// dirMetadata contains the metadata information about a renter directory
 	dirMetadata struct {
+		LastRepair    int64
 		LastUpdate    int64
 		MinRedundancy float64
-		NumFiles      int // Exclusive of metadata files
+		NumSiaFiles   int
 	}
 
 	// persist contains all of the persistent renter data.
@@ -226,20 +246,40 @@ func (r *Renter) createDirMetadata(path string) error {
 
 	// Initialize metadata
 	data := dirMetadata{
+		LastRepair:    int64(0),
 		LastUpdate:    time.Now().UnixNano(),
 		MinRedundancy: float64(0),
-		NumFiles:      0,
+		NumSiaFiles:   0,
 	}
 	return r.saveDirMetadata(path, data)
 }
 
 // findMinDirRedundancy walks the renter's persistance directory and finds the
-// directory with the lowest redundancy
-func (r *Renter) findMinDirRedundancy() string {
-	// This method will log errors but not return them
+// directory with the lowest redundancy. Since it uses Walk() the directory
+// returned will be the lowest level directory
+//
+// TODO - This could be quicker if we just followed the path of lowest
+// redundancy instead of walking the directory. Will need to make sure that
+// managedUpdateRenterRedundancy makes sure that each directory's redundancy is
+// the lowest redundancy of any of its files or sub directories
+func (r *Renter) findMinDirRedundancy() (string, error) {
+	var metadata, metadataAnyTime dirMetadata
 	dir := r.persistDir
-	redundancy := float64(100)
+	redundancy := math.MaxFloat64
+	// dirAnyTime and redundancyAnyTime is the dir and redundancy regardless of
+	// timeBetweenRepair
+	dirAnyTime := r.persistDir
+	redundancyAnyTime := math.MaxFloat64
+
+	// Read renter persist directory metadata
+	persistDirMetadata, err := r.loadDirMetadata(dir)
+	if err != nil {
+		r.log.Printf("WARN: Could not load directory metadata for %v: %v", dir, err)
+		return dir, err
+	}
 	_ = filepath.Walk(r.persistDir, func(path string, info os.FileInfo, err error) error {
+		// This Walk will log errors but not return them
+
 		// Skip files
 		//
 		// TODO: Currently skipping contracts directory until renter files are
@@ -251,26 +291,39 @@ func (r *Renter) findMinDirRedundancy() string {
 			return nil
 		}
 
-		// Read directory redundancy
-		metadata, err := r.loadDirMetadata(path)
+		// Read directory metadata
+		md, err := r.loadDirMetadata(path)
 		if err != nil {
-			r.log.Println("WARN: Could not load directory metadata:", err)
+			r.log.Printf("WARN: Could not load directory metadata for %v: %v", path, err)
 			return nil
 		}
 
 		// Skip empty directories
-		if metadata.NumFiles == 0 {
+		if md.NumSiaFiles == 0 {
 			return nil
 		}
 
 		// Check redundancy
-		if metadata.MinRedundancy <= redundancy {
-			redundancy = metadata.MinRedundancy
+		if md.MinRedundancy > redundancy {
+			return nil
+		}
+		metadataAnyTime = md
+		redundancyAnyTime = md.MinRedundancy
+		dirAnyTime = path
+		if md.LastRepair < time.Now().UnixNano()-timeBetweenRepair {
+			metadata = md
+			redundancy = md.MinRedundancy
 			dir = path
 		}
 		return nil
 	})
-	return dir
+
+	if dir == r.persistDir && persistDirMetadata.LastRepair >= time.Now().UnixNano()-timeBetweenRepair {
+		metadataAnyTime.LastRepair = time.Now().UnixNano()
+		return dirAnyTime, r.saveDirMetadata(dirAnyTime, metadataAnyTime)
+	}
+	metadata.LastRepair = time.Now().UnixNano()
+	return dir, r.saveDirMetadata(dir, metadata)
 }
 
 // loadDirMetadata loads the directory metadata from disk
@@ -302,17 +355,22 @@ func (r *Renter) updateDirMetadata(redundancies map[string]float64) error {
 		if err != nil {
 			return err
 		}
-		numFiles := 0
+		siaFiles := 0
 		for _, f := range files {
 			if filepath.Ext(f.Name()) == ShareExtension {
-				numFiles++
+				siaFiles++
 				continue
 			}
 		}
+		metadata, err := r.loadDirMetadata(path)
+		if err != nil {
+			return err
+		}
 		err = r.saveDirMetadata(path, dirMetadata{
+			LastRepair:    metadata.LastRepair,
 			LastUpdate:    time.Now().UnixNano(),
 			MinRedundancy: redundancy,
-			NumFiles:      numFiles,
+			NumSiaFiles:   siaFiles,
 		})
 		if err != nil {
 			return err
@@ -687,7 +745,7 @@ func (r *Renter) readSharedFiles(reader io.Reader) (map[string]*siafile.SiaFile,
 // initPersist handles all of the persistence initialization, such as creating
 // the persistence directory and starting the logger.
 func (r *Renter) initPersist() error {
-	// Create the perist directory if it does not yet exist.
+	// Create the persist directory if it does not yet exist.
 	err := os.MkdirAll(r.persistDir, 0700)
 	if err != nil {
 		return err

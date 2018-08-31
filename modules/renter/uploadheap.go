@@ -239,8 +239,11 @@ func (r *Renter) buildUnfinishedChunks(f *siafile.SiaFile, hosts map[string]stru
 // construct a chunk heap.
 func (r *Renter) managedBuildChunkHeap(hosts map[string]struct{}) {
 	// Find directory with lowest redundancy
-	dir := r.findMinDirRedundancy()
-
+	dir, err := r.findMinDirRedundancy()
+	if err != nil {
+		// error was logged in findMinDirRedundancy
+		return
+	}
 	// Get files from directory
 	// Get all the files holding the readlock.
 	lockID := r.mu.RLock()
@@ -382,6 +385,8 @@ func (r *Renter) managedUpdateRenterRedundancy() error {
 	for _, file := range files {
 		redundancy := file.Redundancy(offline, goodForRenew)
 		path := filepath.Join(r.persistDir, filepath.Dir(file.SiaPath()))
+		// Update redundancies map, make sure that lowest redundancy is filtered
+		// up through the directory tree
 		for path != filepath.Dir(r.persistDir) {
 			r, ok := redundancies[path]
 			if ok && r > redundancy || !ok {
