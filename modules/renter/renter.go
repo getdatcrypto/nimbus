@@ -255,34 +255,7 @@ func (r *Renter) PriceEstimation() (modules.RenterPriceEstimation, error) {
 	var totalUploadCost types.Currency
 
 	// Check if there are current contracts that could be used for the estimate
-	if len(r.Contracts()) == 0 {
-		// Add up the costs for each host.
-		for _, host := range hosts {
-			totalContractCost = totalContractCost.Add(host.ContractPrice)
-			totalDownloadCost = totalDownloadCost.Add(host.DownloadBandwidthPrice)
-			totalStorageCost = totalStorageCost.Add(host.StoragePrice)
-			totalUploadCost = totalUploadCost.Add(host.UploadBandwidthPrice)
-		}
-
-		// Factor in redundancy.
-		totalStorageCost = totalStorageCost.Mul64(3) // TODO: follow file settings?
-		totalUploadCost = totalUploadCost.Mul64(3)   // TODO: follow file settings?
-
-		// Perform averages.
-		totalContractCost = totalContractCost.Div64(uint64(len(hosts)))
-		totalDownloadCost = totalDownloadCost.Div64(uint64(len(hosts)))
-		totalStorageCost = totalStorageCost.Div64(uint64(len(hosts)))
-		totalUploadCost = totalUploadCost.Div64(uint64(len(hosts)))
-
-		// Take the average of the host set to estimate the overall cost of the
-		// contract forming.
-		totalContractCost = totalContractCost.Mul64(uint64(priceEstimationScope))
-
-		// Add the cost of paying the transaction fees for the first contract.
-		_, feePerByte := r.tpool.FeeEstimation()
-		totalContractCost = totalContractCost.Add(feePerByte.Mul64(1000).Mul64(uint64(priceEstimationScope)))
-
-	} else {
+	if len(r.Contracts()) != 0 {
 		// Add up costs from renter contracts
 		contracts := r.Contracts()
 		for _, c := range contracts {
@@ -293,12 +266,59 @@ func (r *Renter) PriceEstimation() (modules.RenterPriceEstimation, error) {
 			totalUploadCost = totalUploadCost.Add(c.UploadSpending)
 			totalStorageCost = totalStorageCost.Add(c.StorageSpending)
 		}
-
 		// Perform averages.
 		totalContractCost = totalContractCost.Div64(uint64(len(contracts)))
 		totalDownloadCost = totalDownloadCost.Div64(uint64(len(contracts)))
 		totalStorageCost = totalStorageCost.Div64(uint64(len(contracts)))
 		totalUploadCost = totalUploadCost.Div64(uint64(len(contracts)))
+
+	}
+
+	// Check if any of the costs are still zero
+	zeroEstimate := totalContractCost.Cmp(types.ZeroCurrency) == 0 || totalDownloadCost.Cmp(types.ZeroCurrency) == 0 || totalStorageCost.Cmp(types.ZeroCurrency) == 0 || totalUploadCost.Cmp(types.ZeroCurrency) == 0
+	if zeroEstimate {
+		var hostTotalContractCost types.Currency
+		var hostTotalDownloadCost types.Currency
+		var hostTotalStorageCost types.Currency
+		var hostTotalUploadCost types.Currency
+		// Add up the costs for each host.
+		for _, host := range hosts {
+			hostTotalContractCost = hostTotalContractCost.Add(host.ContractPrice)
+			hostTotalDownloadCost = hostTotalDownloadCost.Add(host.DownloadBandwidthPrice)
+			hostTotalStorageCost = hostTotalStorageCost.Add(host.StoragePrice)
+			hostTotalUploadCost = hostTotalUploadCost.Add(host.UploadBandwidthPrice)
+		}
+
+		// Factor in redundancy.
+		hostTotalStorageCost = hostTotalStorageCost.Mul64(3) // TODO: follow file settings?
+		hostTotalUploadCost = hostTotalUploadCost.Mul64(3)   // TODO: follow file settings?
+
+		// Perform averages.
+		hostTotalContractCost = hostTotalContractCost.Div64(uint64(len(hosts)))
+		hostTotalDownloadCost = hostTotalDownloadCost.Div64(uint64(len(hosts)))
+		hostTotalStorageCost = hostTotalStorageCost.Div64(uint64(len(hosts)))
+		hostTotalUploadCost = hostTotalUploadCost.Div64(uint64(len(hosts)))
+
+		// Take the average of the host set to estimate the overall cost of the
+		// contract forming.
+		hostTotalContractCost = hostTotalContractCost.Mul64(uint64(priceEstimationScope))
+
+		// Add the cost of paying the transaction fees for the first contract.
+		_, feePerByte := r.tpool.FeeEstimation()
+		hostTotalContractCost = hostTotalContractCost.Add(feePerByte.Mul64(1000).Mul64(uint64(priceEstimationScope)))
+
+		if totalContractCost.Cmp(types.ZeroCurrency) == 0 {
+			totalContractCost = hostTotalContractCost
+		}
+		if totalDownloadCost.Cmp(types.ZeroCurrency) == 0 {
+			totalDownloadCost = hostTotalDownloadCost
+		}
+		if totalUploadCost.Cmp(types.ZeroCurrency) == 0 {
+			totalUploadCost = hostTotalUploadCost
+		}
+		if totalStorageCost.Cmp(types.ZeroCurrency) == 0 {
+			totalStorageCost = hostTotalStorageCost
+		}
 	}
 
 	// Convert values to being human-scale.
