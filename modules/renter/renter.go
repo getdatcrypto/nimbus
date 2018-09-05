@@ -263,13 +263,14 @@ func (r *Renter) PriceEstimation() (modules.RenterPriceEstimation, error) {
 			if len(c.Transaction.FileContractRevisions) != 0 {
 				size += c.Transaction.FileContractRevisions[0].NewFileSize
 			}
-
 			totalContractCost = totalContractCost.Add(c.ContractFee)
 			totalContractCost = totalContractCost.Add(c.SiafundFee)
 			totalContractCost = totalContractCost.Add(c.TxnFee)
 			totalDownloadCost = totalDownloadCost.Add(c.DownloadSpending)
 			totalUploadCost = totalUploadCost.Add(c.UploadSpending)
-			totalStorageCost = totalStorageCost.Add(c.StorageSpending)
+
+			numBlocks := c.EndHeight - c.StartHeight
+			totalStorageCost = totalStorageCost.Add(c.StorageSpending.Div64(uint64(numBlocks)))
 		}
 		// Perform averages.
 		totalDownloadCost = totalDownloadCost.Div64(uint64(len(contracts)))
