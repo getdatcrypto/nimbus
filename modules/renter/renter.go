@@ -258,7 +258,12 @@ func (r *Renter) PriceEstimation() (modules.RenterPriceEstimation, error) {
 	if len(r.Contracts()) != 0 {
 		// Add up costs from renter contracts
 		contracts := r.Contracts()
+		var size uint64
 		for _, c := range contracts {
+			if len(c.Transaction.FileContractRevisions) != 0 {
+				size += c.Transaction.FileContractRevisions[0].NewFileSize
+			}
+
 			totalContractCost = totalContractCost.Add(c.ContractFee)
 			totalContractCost = totalContractCost.Add(c.SiafundFee)
 			totalContractCost = totalContractCost.Add(c.TxnFee)
@@ -267,11 +272,14 @@ func (r *Renter) PriceEstimation() (modules.RenterPriceEstimation, error) {
 			totalStorageCost = totalStorageCost.Add(c.StorageSpending)
 		}
 		// Perform averages.
-		totalContractCost = totalContractCost.Div64(uint64(len(contracts)))
 		totalDownloadCost = totalDownloadCost.Div64(uint64(len(contracts)))
 		totalStorageCost = totalStorageCost.Div64(uint64(len(contracts)))
 		totalUploadCost = totalUploadCost.Div64(uint64(len(contracts)))
 
+		// Calculate cost per byte
+		totalDownloadCost = totalDownloadCost.Div64(size)
+		totalStorageCost = totalStorageCost.Div64(size)
+		totalUploadCost = totalUploadCost.Div64(size)
 	}
 
 	// Check if any of the costs are still zero
