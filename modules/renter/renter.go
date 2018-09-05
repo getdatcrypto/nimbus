@@ -230,9 +230,6 @@ func (r *Renter) Close() error {
 
 // PriceEstimation estimates the cost in siacoins of performing various storage
 // and data operations.
-//
-// TODO: Make this function line up with the actual settings in the renter.
-// Perhaps even make it so it uses the renter's actual contracts if it has any.
 func (r *Renter) PriceEstimation() (modules.RenterPriceEstimation, error) {
 	id := r.mu.RLock()
 	lastEstimation := r.lastEstimation
@@ -256,7 +253,9 @@ func (r *Renter) PriceEstimation() (modules.RenterPriceEstimation, error) {
 	var totalDownloadCost types.Currency
 	var totalStorageCost types.Currency
 	var totalUploadCost types.Currency
-	if len(r.Contracts()) == 0 && len(r.OldContracts()) == 0 {
+
+	// Check if there are current contracts that could be used for the estimate
+	if len(r.Contracts()) == 0 {
 		// Add up the costs for each host.
 		for _, host := range hosts {
 			totalContractCost = totalContractCost.Add(host.ContractPrice)
@@ -286,16 +285,7 @@ func (r *Renter) PriceEstimation() (modules.RenterPriceEstimation, error) {
 	} else {
 		// Add up costs from renter contracts
 		contracts := r.Contracts()
-		oldContracts := r.OldContracts()
 		for _, c := range contracts {
-			totalContractCost = totalContractCost.Add(c.ContractFee)
-			totalContractCost = totalContractCost.Add(c.SiafundFee)
-			totalContractCost = totalContractCost.Add(c.TxnFee)
-			totalDownloadCost = totalDownloadCost.Add(c.DownloadSpending)
-			totalUploadCost = totalUploadCost.Add(c.UploadSpending)
-			totalStorageCost = totalStorageCost.Add(c.StorageSpending)
-		}
-		for _, c := range oldContracts {
 			totalContractCost = totalContractCost.Add(c.ContractFee)
 			totalContractCost = totalContractCost.Add(c.SiafundFee)
 			totalContractCost = totalContractCost.Add(c.TxnFee)
@@ -305,10 +295,10 @@ func (r *Renter) PriceEstimation() (modules.RenterPriceEstimation, error) {
 		}
 
 		// Perform averages.
-		totalContractCost = totalContractCost.Div64(uint64(len(contracts) + len(oldContracts)))
-		totalDownloadCost = totalDownloadCost.Div64(uint64(len(contracts) + len(oldContracts)))
-		totalStorageCost = totalStorageCost.Div64(uint64(len(contracts) + len(oldContracts)))
-		totalUploadCost = totalUploadCost.Div64(uint64(len(contracts) + len(oldContracts)))
+		totalContractCost = totalContractCost.Div64(uint64(len(contracts)))
+		totalDownloadCost = totalDownloadCost.Div64(uint64(len(contracts)))
+		totalStorageCost = totalStorageCost.Div64(uint64(len(contracts)))
+		totalUploadCost = totalUploadCost.Div64(uint64(len(contracts)))
 	}
 
 	// Convert values to being human-scale.
