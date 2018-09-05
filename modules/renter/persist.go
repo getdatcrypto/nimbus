@@ -266,10 +266,7 @@ func (r *Renter) findMinDirRedundancy() (string, error) {
 	var metadata, metadataAnyTime dirMetadata
 	dir := r.persistDir
 	redundancy := math.MaxFloat64
-	// dirAnyTime and redundancyAnyTime is the dir and redundancy regardless of
-	// timeBetweenRepair
-	dirAnyTime := r.persistDir
-	redundancyAnyTime := math.MaxFloat64
+	dirAnyTime := r.persistDir // dirAnyTime is the dir regardless of timeBetweenRepair
 
 	// Read renter persist directory metadata
 	persistDirMetadata, err := r.loadDirMetadata(dir)
@@ -304,7 +301,7 @@ func (r *Renter) findMinDirRedundancy() (string, error) {
 		}
 
 		// Skip empty directories
-		if metadata.NumFiles == 0 {
+		if md.NumSiaFiles == 0 {
 			return nil
 		}
 
@@ -313,7 +310,6 @@ func (r *Renter) findMinDirRedundancy() (string, error) {
 			return nil
 		}
 		metadataAnyTime = md
-		redundancyAnyTime = md.MinRedundancy
 		dirAnyTime = path
 		if md.LastRepair < time.Now().UnixNano()-timeBetweenRepair {
 			metadata = md
