@@ -251,6 +251,14 @@ func (r *Renter) PriceEstimation() (modules.RenterPriceEstimation, error) {
 		contracts := r.Contracts()
 		var pks []types.SiaPublicKey
 		for _, c := range contracts {
+			u, ok := r.ContractUtility(c.HostPublicKey)
+			if !ok {
+				continue
+			}
+			// Check for active contracts only
+			if !u.GoodForRenew {
+				continue
+			}
 			pks = append(pks, c.HostPublicKey)
 		}
 		// Grab hosts
