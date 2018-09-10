@@ -230,6 +230,9 @@ func (r *Renter) Close() error {
 
 // PriceEstimation estimates the cost in siacoins of performing various storage
 // and data operations.
+//
+// TODO
+// - look at actual renter allowance, allowance provided, or 500SC
 func (r *Renter) PriceEstimation() (modules.RenterPriceEstimation, error) {
 	id := r.mu.RLock()
 	lastEstimation := r.lastEstimation
