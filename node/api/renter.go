@@ -23,7 +23,7 @@ var (
 	recommendedHosts = build.Select(build.Var{
 		Standard: uint64(50),
 		Dev:      uint64(2),
-		Testing:  uint64(1),
+		Testing:  uint64(4),
 	}).(uint64)
 
 	// requiredHosts specifies the minimum number of hosts that must be set in
@@ -553,6 +553,8 @@ func (api *API) renterPricesHandler(w http.ResponseWriter, req *http.Request, ps
 			return
 		}
 		allowance.Funds = funds
+	} else if allowance.Funds.Cmp(types.ZeroCurrency) == 0 {
+		allowance.Funds = types.SiacoinPrecision.Mul64(500)
 	}
 	// Scan the number of hosts to use. (optional parameter)
 	if h := ps.ByName("hosts"); h != "" {
@@ -578,8 +580,7 @@ func (api *API) renterPricesHandler(w http.ResponseWriter, req *http.Request, ps
 		}
 		allowance.Period = types.BlockHeight(period)
 	} else if allowance.Period == 0 {
-		WriteError(w, Error{"period needs to be set if it hasn't been set before"}, http.StatusBadRequest)
-		return
+		allowance.Period = types.BlockHeight(12096)
 	}
 	// Scan the renew window. (optional parameter)
 	if rw := ps.ByName("renewwindow"); rw != "" {
