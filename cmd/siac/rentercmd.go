@@ -103,10 +103,13 @@ var (
 	}
 
 	renterPricesCmd = &cobra.Command{
-		Use:   "prices",
+		Use:   "prices [amount] [period] [hosts] [renew window]",
 		Short: "Display the price of storage and bandwidth",
-		Long:  "Display the estimated prices of storing files, retrieving files, and creating a set of contracts",
-		Run:   wrap(renterpricescmd),
+		Long: `Display the estimated prices of storing files, retrieving files, and creating a set of contracts.
+
+An allowance can be provided to a more accurate, if no allowance is provided the current set allowance will be used,
+and if no allowance is set an allowance of 500SC, 12w period, 50 hosts, and 1w renew window will be used.`,
+		Run: wrap(renterpricescmd),
 	}
 
 	renterSetAllowanceCmd = &cobra.Command{
@@ -685,7 +688,7 @@ func downloadprogress(siapath, destination string) error {
 			continue
 		}
 
-		// Check whether the file has completed or otherwise errored out.
+		// Check whether the file has completed or otherwise error out.
 		if d.Error != "" {
 			return errors.New(d.Error)
 		}
@@ -843,9 +846,54 @@ func renterfilesuploadcmd(source, path string) {
 }
 
 // renterpricescmd is the handler for the command `siac renter prices`, which
-// displays the prices of various storage operations.
-func renterpricescmd() {
-	rpg, err := httpClient.RenterPricesGet()
+// displays the prices of various storage operations. The user can submit an
+// allowance to have the estimate reflect those settings or the user can submit
+// nothing
+func renterpricescmd(cmd *cobra.Command, args []string) {
+	allowance := modules.Allowance{}
+
+	if len(args) == 1 || len(args) > 4 {
+		cmd.UsageFunc()(cmd)
+		os.Exit(exitCodeUsage)
+	}
+	if len(args) > 0 {
+		hastings, err := parseCurrency(args[0])
+		if err != nil {
+			die("Could not parse amount:", err)
+		}
+		blocks, err := parsePeriod(args[1])
+		if err != nil {
+			die("Could not parse period:", err)
+		}
+		_, err = fmt.Sscan(hastings, &allowance.Funds)
+		if err != nil {
+			die("Could not parse amount:", err)
+		}
+
+		_, err = fmt.Sscan(blocks, &allowance.Period)
+		if err != nil {
+			die("Could not parse period:", err)
+		}
+	}
+	if len(args) > 2 {
+		hosts, err := strconv.Atoi(args[2])
+		if err != nil {
+			die("Could not parse host count")
+		}
+		allowance.Hosts = uint64(hosts)
+	}
+	if len(args) > 3 {
+		renewWindow, err := parsePeriod(args[3])
+		if err != nil {
+			die("Could not parse renew window")
+		}
+		_, err = fmt.Sscan(renewWindow, &allowance.RenewWindow)
+		if err != nil {
+			die("Could not parse renew window:", err)
+		}
+	}
+
+	rpg, err := httpClient.RenterPricesGet(allowance)
 	if err != nil {
 		die("Could not read the renter prices:", err)
 	}

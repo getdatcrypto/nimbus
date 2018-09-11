@@ -100,7 +100,7 @@ func newRenterTester(name string) (*renterTester, error) {
 }
 
 // stubHostDB is the minimal implementation of the hostDB interface. It can be
-// embedded in other mock hostDB types, removing the need to reimplement all
+// embedded in other mock hostDB types, removing the need to re-implement all
 // of the hostDB's methods on every mock.
 type stubHostDB struct{}
 
@@ -175,13 +175,14 @@ func TestRenterPricesVolatility(t *testing.T) {
 	dbe.StoragePrice = types.SiacoinPrecision
 	dbe.UploadBandwidthPrice = types.SiacoinPrecision
 	hdb.dbEntries = append(hdb.dbEntries, dbe)
-	initial, err := rt.renter.PriceEstimation()
+	allowance := modules.Allowance{}
+	initial, err := rt.renter.PriceEstimation(allowance)
 	if err != nil {
 		t.Fatal(err)
 	}
 	dbe.ContractPrice = dbe.ContractPrice.Mul64(2)
 	hdb.dbEntries = append(hdb.dbEntries, dbe)
-	after, err := rt.renter.PriceEstimation()
+	after, err := rt.renter.PriceEstimation(allowance)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -194,7 +195,7 @@ func TestRenterPricesVolatility(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	after, err = rt.renter.PriceEstimation()
+	after, err = rt.renter.PriceEstimation(allowance)
 	if err != nil {
 		t.Fatal(err)
 	}

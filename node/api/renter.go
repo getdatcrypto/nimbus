@@ -543,8 +543,61 @@ func (api *API) renterFilesHandler(w http.ResponseWriter, req *http.Request, _ h
 
 // renterPricesHandler reports the expected costs of various actions given the
 // renter settings and the set of available hosts.
-func (api *API) renterPricesHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
-	estimate, err := api.renter.PriceEstimation()
+func (api *API) renterPricesHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+	allowance := modules.Allowance{}
+	// Scan the allowance amount. (optional parameter)
+	if f := ps.ByName("funds"); f != "" {
+		funds, ok := scanAmount(f)
+		if !ok {
+			WriteError(w, Error{"unable to parse funds"}, http.StatusBadRequest)
+			return
+		}
+		allowance.Funds = funds
+	}
+	// Scan the number of hosts to use. (optional parameter)
+	if h := ps.ByName("hosts"); h != "" {
+		var hosts uint64
+		if _, err := fmt.Sscan(h, &hosts); err != nil {
+			WriteError(w, Error{"unable to parse hosts: " + err.Error()}, http.StatusBadRequest)
+			return
+		} else if hosts != 0 && hosts < requiredHosts {
+			WriteError(w, Error{fmt.Sprintf("insufficient number of hosts, need at least %v but have %v", recommendedHosts, hosts)}, http.StatusBadRequest)
+		} else {
+			allowance.Hosts = hosts
+		}
+	} else if allowance.Hosts == 0 {
+		// Sane defaults if host haven't been set before.
+		allowance.Hosts = recommendedHosts
+	}
+	// Scan the period. (optional parameter)
+	if p := ps.ByName("period"); p != "" {
+		var period types.BlockHeight
+		if _, err := fmt.Sscan(p, &period); err != nil {
+			WriteError(w, Error{"unable to parse period: " + err.Error()}, http.StatusBadRequest)
+			return
+		}
+		allowance.Period = types.BlockHeight(period)
+	} else if allowance.Period == 0 {
+		WriteError(w, Error{"period needs to be set if it hasn't been set before"}, http.StatusBadRequest)
+		return
+	}
+	// Scan the renew window. (optional parameter)
+	if rw := ps.ByName("renewwindow"); rw != "" {
+		var renewWindow types.BlockHeight
+		if _, err := fmt.Sscan(rw, &renewWindow); err != nil {
+			WriteError(w, Error{"unable to parse renewwindow: " + err.Error()}, http.StatusBadRequest)
+			return
+		} else if renewWindow != 0 && types.BlockHeight(renewWindow) < requiredRenewWindow {
+			WriteError(w, Error{fmt.Sprintf("renew window is too small, must be at least %v blocks but have %v blocks", requiredRenewWindow, renewWindow)}, http.StatusBadRequest)
+			return
+		} else {
+			allowance.RenewWindow = types.BlockHeight(renewWindow)
+		}
+	} else if allowance.RenewWindow == 0 {
+		// Sane defaults if renew window hasn't been set before.
+		allowance.RenewWindow = allowance.Period / 2
+	}
+	estimate, err := api.renter.PriceEstimation(allowance)
 	if err != nil {
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
 		return

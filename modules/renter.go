@@ -390,7 +390,7 @@ type Renter interface {
 
 	// PriceEstimation estimates the cost in siacoins of performing various
 	// storage and data operations.
-	PriceEstimation() (RenterPriceEstimation, error)
+	PriceEstimation(allowance Allowance) (RenterPriceEstimation, error)
 
 	// RenameFile changes the path of a file.
 	RenameFile(path, newPath string) error

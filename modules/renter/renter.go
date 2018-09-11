@@ -229,11 +229,10 @@ func (r *Renter) Close() error {
 }
 
 // PriceEstimation estimates the cost in siacoins of performing various storage
-// and data operations.
-//
-// TODO
-// - look at actual renter allowance, allowance provided, or 500SC
-func (r *Renter) PriceEstimation() (modules.RenterPriceEstimation, error) {
+// and data operations.  The estimation will be done using the provided
+// allowance, if an empty allowance is provided then the renter's current
+// allowance will be used if one is set.
+func (r *Renter) PriceEstimation(allowance modules.Allowance) (modules.RenterPriceEstimation, error) {
 	id := r.mu.RLock()
 	lastEstimation := r.lastEstimation
 	r.mu.RUnlock(id)
@@ -246,6 +245,19 @@ func (r *Renter) PriceEstimation() (modules.RenterPriceEstimation, error) {
 	var totalDownloadCost types.Currency
 	var totalStorageCost types.Currency
 	var totalUploadCost types.Currency
+
+	// Determine allowance to use
+	if reflect.DeepEqual(allowance, modules.Allowance{}) {
+		rs := r.Settings()
+		if reflect.DeepEqual(rs.Allowance, modules.Allowance{}) {
+			allowance.Funds = types.SiacoinPrecision.Mul64(500)
+			allowance.Hosts = uint64(priceEstimationScope)
+			allowance.Period = types.BlockHeight(12096)
+			allowance.RenewWindow = types.BlockHeight(1008)
+		} else {
+			allowance = rs.Allowance
+		}
+	}
 
 	// Check if there are current contracts, if so grab the hosts associated
 	// with the contracts to be used for the estimate
@@ -275,7 +287,7 @@ func (r *Renter) PriceEstimation() (modules.RenterPriceEstimation, error) {
 	} else {
 		// Grab hosts to perform the estimation.
 		var err error
-		hosts, err = r.hostDB.RandomHosts(priceEstimationScope, nil, nil)
+		hosts, err = r.hostDB.RandomHosts(int(allowance.Hosts), nil, nil)
 		if err != nil {
 			return modules.RenterPriceEstimation{}, errors.AddContext(err, "could not generate estimate")
 		}
@@ -306,11 +318,14 @@ func (r *Renter) PriceEstimation() (modules.RenterPriceEstimation, error) {
 
 	// Take the average of the host set to estimate the overall cost of the
 	// contract forming.
-	totalContractCost = totalContractCost.Mul64(uint64(priceEstimationScope))
+	totalContractCost = totalContractCost.Mul64(allowance.Hosts)
 
-	// Add the cost of paying the transaction fees for the first contract.
+	// Add the cost of paying the transaction fees for the first contracts and
+	// 10% siafund fee.  10% siafund fee accounts for paying 3.9% siafund on
+	// transactions and host collatoral
 	_, feePerByte := r.tpool.FeeEstimation()
-	totalContractCost = totalContractCost.Add(feePerByte.Mul64(1000).Mul64(uint64(priceEstimationScope)))
+	siafundFee := allowance.Funds.Mul64(110).Div64(100)
+	totalContractCost = totalContractCost.Add(feePerByte.Mul64(1000).Mul64(uint64(allowance.Hosts))).Add(siafundFee)
 
 	// Convert values to being human-scale.
 	totalDownloadCost = totalDownloadCost.Mul(modules.BytesPerTerabyte)
