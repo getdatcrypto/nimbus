@@ -109,7 +109,7 @@ var (
 
 An allowance can be provided to a more accurate, if no allowance is provided the current set allowance will be used,
 and if no allowance is set an allowance of 500SC, 12w period, 50 hosts, and 1w renew window will be used.`,
-		Run: wrap(renterpricescmd),
+		Run: renterpricescmd,
 	}
 
 	renterSetAllowanceCmd = &cobra.Command{
