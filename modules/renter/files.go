@@ -139,9 +139,13 @@ func (r *Renter) FileList() []modules.FileInfo {
 			localPath = tf.RepairPath
 		}
 		fileList = append(fileList, modules.FileInfo{
+			AccessTime:     f.AccessTime(),
 			CipherType:     f.MasterKey().Type(),
+			ChangeTime:     f.ChangeTime(),
+			CreateTime:     f.CreateTime(),
 			SiaPath:        f.SiaPath(),
 			LocalPath:      localPath,
+			ModTime:        f.ModTime(),
 			Filesize:       f.Size(),
 			Renewing:       true,
 			Available:      f.Available(offline),
@@ -191,9 +195,13 @@ func (r *Renter) File(siaPath string) (modules.FileInfo, error) {
 		localPath = tf.RepairPath
 	}
 	fileInfo = modules.FileInfo{
+		AccessTime:     file.AccessTime(),
 		CipherType:     file.MasterKey().Type(),
+		ChangeTime:     file.ChangeTime(),
+		CreateTime:     file.CreateTime(),
 		SiaPath:        file.SiaPath(),
 		LocalPath:      localPath,
+		ModTime:        file.ModTime(),
 		Filesize:       file.Size(),
 		Renewing:       renewing,
 		Available:      file.Available(offline),
